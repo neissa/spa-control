@@ -93,3 +93,15 @@ Sur le spa …0009 (passerelle 1.16), ces commandes répondent HTTP 200 « set s
 - **Lecture** : après rafraîchissement, la page et l'API donnent les mêmes valeurs (température 58 °F -> 14,5 °C, consigne 50 °F -> 10,0 °C, mode, pompes, lumière, heure du spa). Un écart passager vient du décalage de ~30 s entre deux mises à jour du cloud.
 - **Commande depuis la page** (clic sur l'interrupteur de la lumière) : requête identique à celle du portail et à celle d'un script (`component-state`, `componentType:"light"`, `state:"OFF"`, `deviceNumber:0`). La page affiche « envoyé, en attente » puis, sans changement relu pendant ~20 s, « Réessayez : le spa n'a pas réagi » (message exact).
 - **Le spa ignorait la commande** à ce moment-là (18:46-18:48) : la lumière est restée à `HIGH` après `OFF` envoyé par la page (2 fois) et par script (1 fois), pompes allumées puis éteintes, mode `READY_REST`. La même commande avait fonctionné en ~2 s à 16:20 et 17:12. Cause inconnue (le spa est en mode « Ready in Rest » depuis 16:52 ; hypothèse non confirmée : ce mode bloque les commandes à distance).
+
+### Essais réels depuis la page (24/11/2026)
+Les deux spas du compte ne réagissent pas pareil aux commandes de **réglage**. Le spa à passerelle récente (`buildNumber` 1133/129, 59304***2511050162) les applique en ~4,5 s ; le spa à passerelle 1.16 (57547-012603100009) les accepte (HTTP 200) sans rien changer.
+
+| Essai depuis la page | Passerelle 1133/129 | Passerelle 1.16 |
+|---|---|---|
+| Cycle de filtration 1 : début 04:00 -> 04:15 -> 04:00 (`filter-cycles/schedule`, `numOfIntervals:4`) | appliqué et confirmé en 4,5 s, deux fois | cycle 23:15 -> 23:30 : inchangé après ~1,5 min |
+| Cycle 2 : activer puis désactiver (`toggle-filter2-state` `ON` puis `OFF`) | `DISABLED` -> « Activé, en cours » (06:15, 15 h 30) puis retour `DISABLED`, confirmés en 4,5 s | non essayé |
+| Lumière | allumée en 4,5 s | commande ignorée depuis 18:46 |
+
+- Activer le cycle 2 le met en marche tout de suite si l'heure actuelle tombe dans sa plage (pompe et ozone se sont allumés avec lui).
+- Le cycle 1 n'a aucune commande d'activation (API et portail).
