@@ -8,6 +8,12 @@ Page web 100 % navigateur (index.html + stats.js, localStorage) qui remplace le 
 - Ne pas envoyer de commande d'écriture au spa (pompes, lumières, consigne) sans accord explicite de l'utilisateur.
 - Commits et push seulement sur demande.
 
+## Méthode de travail
+1. Avant toute action : écrire un plan court.
+2. Exécuter. Tout agent qui modifie des fichiers est lancé en worktree dédié (`isolation: "worktree"`) ; les agents `spa-scout` et `spa-reviewer` sont en lecture seule et n'en ont pas besoin.
+3. Lancer `npm test` et vérifier le résultat réel (syntaxe de index.html, comportement attendu) avant de déclarer que c'est fini.
+4. Fusionner le worktree dans la branche seulement si tout est vert, puis demander avant de pousser.
+
 ## Routage des modèles
 Choisir le modèle le moins cher qui fait correctement la tâche. Passer au niveau supérieur seulement si le résultat est faux ou ambigu.
 
