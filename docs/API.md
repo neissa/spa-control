@@ -57,3 +57,26 @@ Le portail désactive les commandes quand le spa est hors ligne (`online=false`)
 - Derrière « Commandes expérimentales » (`spa.experimental` dans localStorage, revérifié à l'envoi) : `/time` (format 12/24 h et réglage manuel sur l'heure de l'appareil), `/filter-cycles/schedule` et `/filter-cycles/toggle-filter2-state` (interrupteur affiché seulement si le 2e composant `FILTER` existe et n'est pas `DISABLED`).
 - Hypothèses de relecture : verrouillage = `state.panelLock` (booléen ou texte `LOCK_*`) ; filtre 2 = deuxième composant `FILTER`, actif si sa valeur n'est pas `OFF`. Le cycle de filtration n'est pas relisible : l'interface l'indique.
 - Journaux : `/events/by-spa/{id}/historical` et `/fault-logs/by-spa/{id}/historical` (`page`, `pageSize=20`, `totalItems`) lus à l'ouverture du détail et par « Charger plus » ; gardés en mémoire seulement. Une erreur (403 ...) laisse le relevé local affiché.
+
+## Requêtes capturées dans le portail officiel (24/11/2026, spa 57547-012603100009)
+Relevées en observant les appels du portail quand on y clique (enregistreur XHR dans l'onglet). Toutes renvoient HTTP 200 (201 pour une création), `via:"WEB"`.
+
+| Action du portail | Requête | Corps |
+|---|---|---|
+| Consigne | `POST /spa-commands/temperature/value` | `{spaId, via, value:51}` (°F **entier**, le portail convertit les °C affichés au 0,5) |
+| Verrouiller le panneau | `POST /spa-commands/panel/state` | `{spaId, via, state:"LOCK_PANEL"}` |
+| Mode de chauffe | `POST /spa-commands/temperature/heater-mode` | `{spaId, via, mode:"READY"}` (réponse « Heater mode toggled successfully ») |
+| Format de l'heure | `POST /spa-commands/time` | `{spaId, via, time:"18:16", isMilitaryFormat:false}` (`time` = heure actuelle du spa en 24 h `HH:MM`) |
+| Cycle de filtration | `POST /spa-commands/filter-cycles/schedule` | `{spaId, deviceNumber:0, numOfIntervals:4, time:"23:15", via}` (`numOfIntervals` = minutes / 15 : 60 min = 4) |
+| Créer un programme | `POST /spa-schedules` | `{spaId, name, values:{heaterTemp:50, heaterMode:"REST"}, settings:{days:[0], hour:18, minute:18}, enabled:true}` → 201 |
+| Modifier un programme | `PATCH /spa-schedules/{id}` | `{name, values:{heaterTemp:51, heaterMode:"REST"}, settings:{days:[0..6], hour, minute}}` |
+| Exécuter un programme | `POST /spa-schedules/{id}/trigger` | `{}` |
+| Supprimer un programme | `DELETE /spa-schedules/{id}` | aucun (le portail demande une confirmation) |
+
+- Jours des programmes : tableau de nombres, **0 = dimanche … 6 = samedi** (confirmé : `[0..6]` s'affiche « Sun … Sat »). `heaterTemp` est en °F entier (le portail a réécrit 50.9 en 51 à l'enregistrement).
+- Cycles de filtration lisibles dans `current-state.components` (FILTER) : `hour`, `minute`, `durationMinutes` (ex. cycle 1 à 23:15 pendant 60 min ; cycle 2 `DISABLED`).
+- La section « C8Zone » du portail est en lecture seule (C8ZMODE, C8ZHEATERSTATE) : aucune commande C8 n'existe dans le portail.
+- Le portail n'a pas de commande pour verrouiller la consigne (`LOCK_TEMP_SETTING` / `UNLOCK_TEMP_SETTING` existent dans l'énumération de `/panel/state`).
+
+### Comportement observé : commandes acceptées mais sans effet sur ce spa
+Sur le spa …0009 (passerelle 1.16), ces commandes répondent HTTP 200 « set successfully » **y compris lorsqu'elles viennent du portail officiel**, mais l'état relu ne change pas (relu pendant 40 s à 3 min) : consigne (`value`), `LOCK_PANEL`, `heater-mode`, format 12/24 h (`/time`), arrêt de la pompe de circulation. Elles sont identiques octet pour octet à celles de cette application. Seuls fonctionnent : lumière, pompes 1 à 3, `UNLOCK_PANEL`. Cause inconnue (comportement du spa ou du cloud).
