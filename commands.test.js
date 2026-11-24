@@ -26,6 +26,14 @@ test('component: pompe ON => HIGH, LOW/MED refusés si absents', () => {
   assert.throws(() => C.component(ID, p, 'MED'), /non disponible/);
 });
 
+test('component: OFF toujours accepté pour une pompe (essai réel), pas pour les autres composants', () => {
+  const p = { componentType: 'PUMP', port: 0, availableValues: ['LOW', 'HIGH'] };
+  assert.deepEqual(C.component(ID, p, 'OFF'), B('/component-state', { componentType: 'jet', state: 'OFF', deviceNumber: 0 }));
+  assert.equal(C.component(ID, p, 'LOW').body.state, 'LOW');
+  for (const t of ['LIGHT', 'BLOWER', 'MISTER', 'AUX']) assert.throws(() => C.component(ID, { componentType: t, port: 0, availableValues: ['ON'] }, 'OFF'), /non disponible/);
+  assert.throws(() => C.component(ID, p, 'MED'), /non disponible/);
+});
+
 test('component: erreurs (type, valeur, DISABLED, port)', () => {
   for (const t of ['FILTER', 'GATEWAY', 'CONTROLLER', 'HEATER']) assert.throws(() => C.component(ID, { componentType: t, availableValues: ['ON'] }, 'ON'), /ne se pilote pas/);
   assert.throws(() => C.component(ID, pump, 'MED'), /non disponible/);
@@ -43,6 +51,12 @@ test('nextState: 3 listes', () => {
   assert.equal(n(['OFF', 'LOW', 'HIGH'], 'HIGH'), 'OFF');
   assert.equal(n(['DISABLED', 'ON', 'OFF'], 'OFF'), 'ON');
   assert.equal(n(['OFF', 'LOW', 'MED', 'HIGH'], 'MED'), 'HIGH');
+  const pn = (av, value) => C.nextState({ componentType: 'PUMP', availableValues: av, value });
+  assert.equal(pn(['LOW', 'HIGH'], 'OFF'), 'LOW'); // pompe sans OFF listé : cycle complet
+  assert.equal(pn(['LOW', 'HIGH'], 'LOW'), 'HIGH');
+  assert.equal(pn(['LOW', 'HIGH'], 'HIGH'), 'OFF');
+  assert.equal(pn(['HIGH'], 'OFF'), 'HIGH'); // sinon le plus faible niveau
+  assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'OFF'), 'LOW');
   assert.throws(() => C.nextState({ availableValues: ['DISABLED'], value: 'DISABLED' }), /suivant/);
 });
 
@@ -136,7 +150,7 @@ test('allOff: seulement les équipements actifs, jamais circ/ozone/filtre/heater
 
 test('allOff: spa B, composant allumé sans OFF / sans port / en double => sauté, pas d\'exception', () => {
   const s = st({ components: [
-    { componentType: 'PUMP', port: '0', value: 'LOW', availableValues: ['LOW', 'HIGH'] }, // pas de OFF
+    { componentType: 'BLOWER', port: '0', value: 'HIGH', availableValues: ['HIGH'] }, // pas de OFF (hors pompe)
     { componentType: 'PUMP', port: '1', value: 'HIGH', availableValues: ['OFF', 'LOW', 'HIGH'] },
     { componentType: 'PUMP', port: null, value: 'LOW', availableValues: ['OFF', 'LOW', 'HIGH'] }, // port manquant
     { componentType: 'LIGHT', port: '0', value: 'ON', availableValues: ['OFF', 'ON'] },
@@ -147,10 +161,17 @@ test('allOff: spa B, composant allumé sans OFF / sans port / en double => saut�
   assert.equal(r.requests[0].comp, s.components[1]);
   assert.equal(r.skipped.length, 4);
   assert.match(r.skipped[0].reason, /pas d'état Éteint/);
-  assert.equal(r.skipped[0].label, 'NPUMP');
+  assert.equal(r.skipped[0].label, 'NBLOWER');
   assert.match(r.skipped[1].reason, /port manquant/);
   assert.match(r.skipped[2].reason, /ambigu/);
   assert.throws(() => C.allOff('', s), /Identifiant/);
+});
+
+test('allOff: une pompe LOW/HIGH sans OFF est éteinte avec OFF', () => {
+  const s = st({ components: [{ componentType: 'PUMP', port: 0, value: 'HIGH', availableValues: ['LOW', 'HIGH'] }] });
+  const r = C.allOff(ID, s);
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(r.requests.map(x => [x.body.componentType, x.body.state, x.body.deviceNumber]), [['jet', 'OFF', 0]]);
 });
 
 test('guard: hors ligne, absent, panelLock non bloquant', () => {

@@ -39,10 +39,12 @@ var SpaView = (function () {
   }
 
   // Contrôle proposé pour un composant : interrupteur (OFF + un état), bouton à niveaux (>= 3 états) ou rien. Même liste que SpaCmd.allOff + circulation exclue.
+  // Pompe : OFF est toujours possible (essai réel), même absent de availableValues.
   var PILOT = ['PUMP', 'LIGHT', 'BLOWER', 'MISTER', 'AUX', 'MICROSILK'];
   function control(c) {
     if (!c || PILOT.indexOf(c.componentType) < 0 || c.value === 'DISABLED') return null;
     var av = (Array.isArray(c.availableValues) ? c.availableValues : []).filter(function (v) { return v !== 'DISABLED'; });
+    if (c.componentType === 'PUMP' && av.indexOf('OFF') < 0 && av.length) av = ['OFF'].concat(av);
     if (av.indexOf('OFF') < 0 || av.length < 2) return null;
     return av.length === 2 ? { kind: 'switch', onValue: av.filter(function (v) { return v !== 'OFF'; })[0] } : { kind: 'cycle' };
   }
@@ -128,7 +130,9 @@ var SpaView = (function () {
     var out = [], p = ping(state, now, opts.maxPingMin), c = clock(state, now, opts.toleranceMin);
     if (p.stale) out.push({ level: 'warning', code: 'ping', text: p.lastSeen ? 'Aucun signal du spa depuis ' + Math.round(p.ageMin) + ' min.' : 'Aucun signal reçu du spa.' });
     if (state.online === false) out.push({ level: 'critical', code: 'offline', text: 'Le spa est hors ligne.' });
-    if (state.errorCode) out.push({ level: 'critical', code: 'error', text: "Code d'erreur " + state.errorCode + '.' });
+    // Code 38 = pas de filtration donc pas de température (essai réel) : information, pas une panne.
+    if (Number(state.errorCode) === 38) out.push({ level: 'info', code: 'nofilter', text: "Pas de filtration en cours : la température n'est pas mesurée tant qu'une pompe n'a pas tourné." });
+    else if (state.errorCode) out.push({ level: 'critical', code: 'error', text: "Code d'erreur " + state.errorCode + '.' });
     if (c.drifted) out.push({ level: 'warning', code: 'clock', text: c.notSet ? "L'horloge du spa n'est pas réglée." : "L'horloge du spa est " + driftText(c.driftMin) + ' : à corriger.' });
     objs(state.statusMessages).forEach(function (m) {
       var sev = String(m.severity || '').toUpperCase();

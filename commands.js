@@ -24,7 +24,8 @@ var SpaCmd = (function () {
     if (!api) throw new Error('Le composant « ' + t + ' » ne se pilote pas.');
     var av = Array.isArray(comp.availableValues) ? comp.availableValues.filter(function (v) { return v !== 'DISABLED'; }) : [];
     if (t === 'PUMP' && target === 'ON' && av.indexOf('ON') < 0 && av.indexOf('HIGH') >= 0) target = 'HIGH';
-    if (av.indexOf(target) < 0) throw new Error('État « ' + target + ' » non disponible pour ' + t + ' (disponibles : ' + (av.join(', ') || 'aucun') + ').');
+    // Essai réel (24/11/2026) : OFF éteint toute pompe même si availableValues n'est que LOW/HIGH. Les autres composants restent stricts.
+    if (av.indexOf(target) < 0 && !(t === 'PUMP' && target === 'OFF')) throw new Error('État « ' + target + ' » non disponible pour ' + t + ' (disponibles : ' + (av.join(', ') || 'aucun') + ').');
     var extra = { componentType: api, state: target };
     if (NEEDS_DEVICE[t]) {
       var n = comp.port == null || comp.port === '' ? NaN : Number(comp.port);
@@ -35,8 +36,10 @@ var SpaCmd = (function () {
   }
 
   // Cycle dans availableValues (hors DISABLED), du plus faible au plus fort, puis retour à OFF.
+  // Pompe : OFF est toujours dans le cycle (OFF -> LOW, car HIGH demandé depuis l'arrêt n'a rien fait lors des essais réels).
   function nextState(comp) {
     var av = comp && Array.isArray(comp.availableValues) ? comp.availableValues : [];
+    if (comp && comp.componentType === 'PUMP') av = av.concat('OFF');
     var list = ORDER.filter(function (v) { return av.indexOf(v) >= 0; });
     if (list.length < 2) throw new Error('Aucun état suivant possible.');
     return list[(list.indexOf(comp.value) + 1) % list.length]; // valeur inconnue (-1) => list[0] (OFF)
@@ -94,7 +97,7 @@ var SpaCmd = (function () {
 
   // Éteint seulement les équipements de confort. Jamais CIRCULATION_PUMP, OZONE, FILTER, HEATER :
   // ce sont des systèmes automatiques (filtration, désinfection, chauffe) qu'on ne coupe pas d'un clic.
-  // Renvoie {requests, skipped}: un composant allumé qui ne peut pas être éteint (pas de OFF, port manquant, même port
+  // Renvoie {requests, skipped}: un composant allumé qui ne peut pas être éteint (pas de OFF sauf pompe, toujours éteignable, port manquant, même port
   // qu'un autre) est SAUTÉ et listé dans skipped [{label, reason}]; chaque requête porte .comp (le composant visé).
   function allOff(spaId, state, labelOf) {
     if (typeof spaId !== 'string' || !spaId) throw new Error('Identifiant du spa manquant.');
@@ -107,7 +110,7 @@ var SpaCmd = (function () {
       var label = labelOf ? labelOf(c) : c.componentType + (c.port != null ? ' ' + c.port : '');
       if (same[c.componentType + ':' + c.port] > 1) return skipped.push({ label: label, reason: 'composant ambigu (même port)' });
       var av = Array.isArray(c.availableValues) ? c.availableValues : [];
-      if (av.indexOf('OFF') < 0) return skipped.push({ label: label, reason: "pas d'état Éteint disponible" });
+      if (av.indexOf('OFF') < 0 && c.componentType !== 'PUMP') return skipped.push({ label: label, reason: "pas d'état Éteint disponible" });
       if (NEEDS_DEVICE[c.componentType] && (c.port == null || c.port === '' || !isFinite(Number(c.port)))) return skipped.push({ label: label, reason: 'port manquant' });
       try { var r = component(spaId, c, 'OFF'); r.comp = c; requests.push(r); }
       catch (e) { skipped.push({ label: label, reason: e.message }); }

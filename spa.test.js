@@ -104,6 +104,16 @@ test('alerts: aucune quand tout va bien, sinon une par problème', () => {
   assert.equal(a[4].level, 'warning');
 });
 
+test('alerts: code 38 = information « pas de filtration », autre code = critique', () => {
+  const s = ok(); s.errorCode = 38; s.currentTemp = 262;
+  s.statusMessages = [{ code: 'TURN_ON_JET_1', message: 'Turn on jet 1', severity: 'INFO' }];
+  const a = V.alerts(s, {}, now);
+  assert.deepEqual(a.map(x => [x.level, x.code]), [['info', 'nofilter']]);
+  assert.equal(a[0].text, "Pas de filtration en cours : la température n'est pas mesurée tant qu'une pompe n'a pas tourné.");
+  assert.equal(V.temps(s).current, null);
+  s.errorCode = 39; assert.deepEqual(V.alerts(s, {}, now).map(x => [x.level, x.code]), [['critical', 'error']]);
+});
+
 test('clock: heure ou minute manquante -> « — »; écart lisible', () => {
   const s = ok(); delete s.hour;
   assert.equal(V.clock(s, now).text, '—');
@@ -148,7 +158,9 @@ test('components: sans port ou clé en double => aucun contrôle', () => {
   assert.deepEqual(ctl([sw('PUMP', 1), sw('PUMP', '1')]), [false, false]);
   for (const bad of [null, undefined, '', 'x']) assert.deepEqual(ctl([sw('LIGHT', bad)]), [false]);
   assert.deepEqual(ctl([sw('MICROSILK', null)]), [true]); // pas de port requis
-  assert.deepEqual(ctl([{ componentType: 'PUMP', port: 0, value: 'LOW', availableValues: ['LOW', 'HIGH'] }]), [false]); // sans OFF
+  assert.deepEqual(ctl([{ componentType: 'PUMP', port: 0, value: 'LOW', availableValues: ['LOW', 'HIGH'] }]), [true]); // sans OFF : pompe quand même pilotable (essai réel)
+  assert.deepEqual(ctl([{ componentType: 'LIGHT', port: 0, value: 'OFF', availableValues: ['HIGH'] }]), [false]); // lumière sans OFF : strict
+  assert.deepEqual(ctl([{ componentType: 'PUMP', port: null, value: 'LOW', availableValues: ['LOW', 'HIGH'] }]), [false]); // sans port
   const s = ok(); s.components = [sw('PUMP', 0)];
   assert.equal(V.components(s, { toString: 'x', constructor: 'y' })[0].label, 'Pompe'); // libellés lus par hasOwn
 });
@@ -160,7 +172,9 @@ test('control: interrupteur, niveaux, ou rien', () => {
   assert.equal(V.control({ componentType: 'OZONE', value: 'ON', availableValues: ['OFF', 'ON'] }), null);
   assert.equal(V.control({ componentType: 'CIRCULATION_PUMP', value: 'ON', availableValues: ['OFF', 'ON'] }), null);
   assert.equal(V.control({ componentType: 'PUMP', value: 'DISABLED', availableValues: ['OFF', 'ON'] }), null);
-  assert.equal(V.control({ componentType: 'PUMP', value: 'ON', availableValues: ['ON'] }), null);
+  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'LOW', availableValues: ['LOW', 'HIGH'] }), { kind: 'cycle' }); // OFF implicite
+  assert.equal(V.control({ componentType: 'LIGHT', value: 'ON', availableValues: ['ON'] }), null);
+  assert.equal(V.control({ componentType: 'PUMP', value: 'OFF', availableValues: ['OFF'] }), null);
   assert.equal(V.control({ componentType: 'PUMP', value: 'ON' }), null);
   assert.equal(V.control(null), null);
 });
