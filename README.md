@@ -11,7 +11,7 @@ Seuls les jetons sont gardés dans localStorage, pas le mot de passe.
 ## Limites
 - Les relevés (1/min) ne se font que **page ouverte** : l'alerte hors ligne et les stats ne couvrent que ces périodes.
 - Historique gardé 14 jours (localStorage ~5 Mo).
-- **Commandes jamais testées sur un vrai spa** : les requêtes viennent de la lecture du code du portail (voir `docs/API.md`). Rien ne part sans clic ; une commande n'est annoncée réussie que si l'état relu du spa la confirme (sinon « Le spa n'a pas encore confirmé »). Un spa hors ligne ne reçoit rien. Le compte propriétaire peut recevoir des 403 selon son rôle : le message de l'API est alors affiché.
+- **Une seule commande testée sur un vrai spa** (lumière éteinte puis rallumée, confirmée par l'état relu en ~2 s) ; les autres ne l'ont pas été : les requêtes viennent de la lecture du code du portail (voir `docs/API.md`). Rien ne part sans clic ; une commande n'est annoncée réussie que si l'état relu du spa la confirme (sinon « Le spa n'a pas encore confirmé »). Un spa hors ligne ne reçoit rien. Le compte propriétaire peut recevoir des 403 selon son rôle : le message de l'API est alors affiché.
 - Hypothèses à vérifier : champ `panelLock` de l'état (verrouillage du panneau), second filtre = deuxième composant `FILTER` (cycle de filtration 2).
 - Format du login/refresh, jours des programmes (0 = dimanche supposé) et définition de « chauffe » à vérifier au premier essai.
 

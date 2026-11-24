@@ -1,7 +1,9 @@
 # API Control My Spa (non officielle, relevée dans le portail)
 
 Base : `https://iot.controlmyspa.com/web`. En-tête `Authorization: Bearer <jeton>` (jeton obtenu par `POST /auth/login`, rafraîchi par `POST /auth/refresh`). CORS ouvert (`*`). Réponses : `{statusCode, message, data}`.
-Rien ci-dessous n'est documenté officiellement : tout vient de la lecture du code du portail et de requêtes GET. **Les POST n'ont pas été testés sur un vrai spa.**
+Rien ci-dessous n'est documenté officiellement : tout vient de la lecture du code du portail et de requêtes GET. **Seule la commande `component-state` sur une lumière a été testée sur un vrai spa (24/11/2026) ; les autres POST ne l'ont pas été.**
+
+Essai vérifié : `POST /spa-commands/component-state` avec `{spaId, via:"WEB", componentType:"light", state:"OFF", deviceNumber:0}` puis `state:"HIGH"` ; réponse HTTP 200 `{"message":"Component state has been set successfully.","data":{"success":true}}` en ~1,1 s ; `current-state` reflète le nouvel état ~2 s plus tard (mise à jour de `updatedAt`).
 
 ## Lecture (GET, vérifiée)
 | Route | Contenu |
