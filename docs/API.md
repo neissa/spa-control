@@ -5,6 +5,8 @@ Rien ci-dessous n'est documenté officiellement : tout vient de la lecture du co
 
 Essai vérifié : `POST /spa-commands/component-state` avec `{spaId, via:"WEB", componentType:"light", state:"OFF", deviceNumber:0}` puis `state:"HIGH"` ; réponse HTTP 200 `{"message":"Component state has been set successfully.","data":{"success":true}}` en ~1,1 s ; `current-state` reflète le nouvel état ~2 s plus tard (mise à jour de `updatedAt`).
 
+Essai pompe (24/11/2026, pompe 2 = `componentType:"jet"`, `deviceNumber:1`, `availableValues` `OFF/LOW/HIGH`) : la demande `state:"LOW"` renvoie HTTP 200 mais l'état relu devient **`HIGH`**, pas `LOW` ; la demande `state:"OFF"` éteint la pompe (confirmé en ~2 s). Le niveau demandé n'est donc pas garanti pour une pompe : toujours relire l'état réel (cette pompe est peut-être mono-vitesse malgré la liste d'états).
+
 ## Lecture (GET, vérifiée)
 | Route | Contenu |
 |---|---|
