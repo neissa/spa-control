@@ -1,6 +1,7 @@
 // Constructeurs purs de commandes spa (aucun réseau, aucun DOM) : chaque fonction renvoie {path, body}
 // (path relatif à /spa-commands) ou lève une Error en français. Spécification : docs/API.md. POST non testés sur un vrai spa.
 var SpaCmd = (function () {
+  var PUMPS = { PUMP: 1, CIRCULATION_PUMP: 1 }; // OFF toujours accepté et cycle complet (essais réels sur jet)
   var API = { PUMP: 'jet', CIRCULATION_PUMP: 'circ-pump', LIGHT: 'light', BLOWER: 'blower', MISTER: 'mister', MICROSILK: 'microsilk', AUX: 'aux', OZONE: 'ozone' };
   var NEEDS_DEVICE = { PUMP: 1, LIGHT: 1, BLOWER: 1, MISTER: 1, AUX: 1 };
   var ORDER = ['OFF', 'LOW', 'MED', 'HIGH', 'ON'];
@@ -25,7 +26,7 @@ var SpaCmd = (function () {
     var av = Array.isArray(comp.availableValues) ? comp.availableValues.filter(function (v) { return v !== 'DISABLED'; }) : [];
     if (t === 'PUMP' && target === 'ON' && av.indexOf('ON') < 0 && av.indexOf('HIGH') >= 0) target = 'HIGH';
     // Essai réel (24/11/2026) : OFF éteint toute pompe même si availableValues n'est que LOW/HIGH. Les autres composants restent stricts.
-    if (av.indexOf(target) < 0 && !(t === 'PUMP' && target === 'OFF')) throw new Error('État « ' + target + ' » non disponible pour ' + t + ' (disponibles : ' + (av.join(', ') || 'aucun') + ').');
+    if (av.indexOf(target) < 0 && !(PUMPS[t] && target === 'OFF')) throw new Error('État « ' + target + ' » non disponible pour ' + t + ' (disponibles : ' + (av.join(', ') || 'aucun') + ').');
     var extra = { componentType: api, state: target };
     if (NEEDS_DEVICE[t]) {
       var n = comp.port == null || comp.port === '' ? NaN : Number(comp.port);
@@ -39,7 +40,7 @@ var SpaCmd = (function () {
   // Pompe : OFF est toujours dans le cycle (OFF -> LOW, car HIGH demandé depuis l'arrêt n'a rien fait lors des essais réels).
   function nextState(comp) {
     var av = comp && Array.isArray(comp.availableValues) ? comp.availableValues : [];
-    if (comp && comp.componentType === 'PUMP') av = av.concat('OFF');
+    if (comp && PUMPS[comp.componentType]) av = av.concat('OFF');
     var list = ORDER.filter(function (v) { return av.indexOf(v) >= 0; });
     if (list.length < 2) throw new Error('Aucun état suivant possible.');
     return list[(list.indexOf(comp.value) + 1) % list.length]; // valeur inconnue (-1) => list[0] (OFF)
@@ -95,8 +96,8 @@ var SpaCmd = (function () {
     return r;
   }
 
-  // Éteint seulement les équipements de confort. Jamais CIRCULATION_PUMP, OZONE, FILTER, HEATER :
-  // ce sont des systèmes automatiques (filtration, désinfection, chauffe) qu'on ne coupe pas d'un clic.
+  // Éteint seulement les équipements de confort. Jamais CIRCULATION_PUMP (pilotable seule, mais la couper coupe aussi la filtration : choix délibéré),
+  // ni OZONE, FILTER, HEATER : systèmes automatiques (filtration, désinfection, chauffe) qu'on ne coupe pas d'un clic.
   // Renvoie {requests, skipped}: un composant allumé qui ne peut pas être éteint (pas de OFF sauf pompe, toujours éteignable, port manquant, même port
   // qu'un autre) est SAUTÉ et listé dans skipped [{label, reason}]; chaque requête porte .comp (le composant visé).
   function allOff(spaId, state, labelOf) {

@@ -385,7 +385,7 @@ function detail(id, live, info, all, now) {
     ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(own(MODE_TXT, ht.mode) || 'Mode inconnu.')}</p></div>` +
       `<div class="row blk"><strong>Plage de température</strong><div class=ctl>${seg(id, 'range', 'range', 'Plage de température', [['HIGH', 'Haute'], ['LOW', 'Basse']], ht.range)}</div></div>` +
       row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('État c8z', val(ht.c8zState)) + row('Statut c8z', val(ht.c8zStatus)))}
-    ${group('Pompes et lumières', comps.map(k => row(esc(k.label), compCtl(id, k) +
+    ${group('Pompes et lumières', comps.map(k => row(esc(k.label) + (k.type === 'CIRCULATION_PUMP' ? '<br><small>Elle fonctionne aussi seule (filtration, chauffage) : le spa peut la rallumer ou la couper lui-même.</small>' : ''), compCtl(id, k) +
       `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
     ${hasPanelLock(x) ? group('Panneau', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé') + (isLocked(x) ? '' : "<small class=hint>Le verrouillage à distance n'a pas pu être confirmé lors des essais (le déverrouillage fonctionne). Vérifiez sur le panneau.</small>"))) : ''}
     ${expGroup}
@@ -523,9 +523,10 @@ async function allOff(id) {
   const o = spaLock(id); if (o) return toast(busyMsg(o), 'error');
   const st = precheck(id); if (!st) return;
   const plan = allOffPlan(id, st), sk = skipTxt(plan.skipped);
+  const circ = SpaView.components(st).some(k => k.type === 'CIRCULATION_PUMP' && k.on) ? ["La pompe de circulation n'est pas éteinte (gérez-la dans le détail du spa)."] : [];
   if (!plan.todo.length) return sk.length ? toast(`Rien à éteindre automatiquement. ${sk.join(' ; ')}`, 'warn') : toast("Rien à éteindre : aucune pompe, lumière ou équipement de confort n'est allumé.", 'info');
   const shown = new Set(plan.todo.map(x => x.c.key));
-  if (!await ask({ title: 'Tout éteindre ?', text: `${label(id)} : ces équipements seront éteints. Filtration, circulation, ozone et chauffage ne sont pas touchés.`, items: plan.todo.map(x => x.c.label).concat(sk), ok: 'Tout éteindre' })) return;
+  if (!await ask({ title: 'Tout éteindre ?', text: `${label(id)} : ces équipements seront éteints. Filtration, circulation, ozone et chauffage ne sont pas touchés.`, items: plan.todo.map(x => x.c.label).concat(sk, circ), ok: 'Tout éteindre' })) return;
   // Après la confirmation : la fenêtre a pu rester ouverte longtemps, on revérifie tout avant d'envoyer.
   const stop = (msg, kind = 'error') => { $('dlg').close(); toast(msg, kind); };
   const o2 = spaLock(id); if (o2) return stop(busyMsg(o2));
@@ -534,7 +535,7 @@ async function allOff(id) {
   if (todo.some(x => !shown.has(x.c.key))) return stop("L'état du spa a changé pendant la confirmation : relancez « Tout éteindre ».");
   if (!todo.length) return stop('Plus rien à éteindre : le spa a changé entre-temps.', 'info');
   ui.busy[k] = 1; ui.lock[k] = { id, what: 'Tout éteindre' }; $('toasterr').textContent = ''; safeRender();
-  $('dlgl').innerHTML = todo.map(x => `<li>${esc(x.c.label)}</li>`).concat(skipTxt(p2.skipped).map(t => `<li>${esc(t)}</li>`)).join('');
+  $('dlgl').innerHTML = todo.map(x => `<li>${esc(x.c.label)}</li>`).concat(skipTxt(p2.skipped).concat(circ).map(t => `<li>${esc(t)}</li>`)).join('');
   $('dlgok').hidden = true; $('dlgno').disabled = true; $('dlgno').textContent = 'Envoi…';
   const li = [...$('dlgl').children], sent = [], failed = [];
   for (let n = 0; n < todo.length; n++) { // en séquence, un résultat par composant

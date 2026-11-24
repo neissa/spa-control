@@ -19,6 +19,20 @@ test('component: URL et corps exacts', () => {
   assert.equal(C.component(ID, { componentType: 'OZONE', availableValues: ['OFF', 'ON'] }, 'ON').body.componentType, 'ozone');
 });
 
+test('component: circulation sans deviceNumber, OFF toujours accepté, cycle OFF/LOW/HIGH', () => {
+  const c3 = { componentType: 'CIRCULATION_PUMP', port: null, value: 'OFF', availableValues: ['OFF', 'LOW', 'HIGH'] };
+  assert.deepEqual(C.component(ID, c3, 'LOW'), B('/component-state', { componentType: 'circ-pump', state: 'LOW' }));
+  assert.ok(!('deviceNumber' in C.component(ID, c3, 'HIGH').body));
+  const c2 = { componentType: 'CIRCULATION_PUMP', port: '0', value: 'OFF', availableValues: ['LOW', 'HIGH'] };
+  assert.equal(C.component(ID, c2, 'OFF').body.state, 'OFF');
+  assert.throws(() => C.component(ID, c2, 'MED'), /non disponible/);
+  assert.equal(C.nextState(c3), 'LOW');
+  assert.equal(C.nextState(Object.assign({}, c3, { value: 'LOW' })), 'HIGH');
+  assert.equal(C.nextState(Object.assign({}, c3, { value: 'HIGH' })), 'OFF');
+  const c1 = { componentType: 'CIRCULATION_PUMP', value: 'OFF', availableValues: ['OFF', 'HIGH'] };
+  assert.equal(C.nextState(c1), 'HIGH'); assert.equal(C.nextState(Object.assign({}, c1, { value: 'HIGH' })), 'OFF');
+});
+
 test('component: pompe ON => HIGH, LOW/MED refusés si absents', () => {
   const p = { componentType: 'PUMP', port: 0, availableValues: ['OFF', 'HIGH'] };
   assert.equal(C.component(ID, p, 'ON').body.state, 'HIGH');
@@ -128,7 +142,7 @@ test('filterCycle: corps, unverified, validations', () => {
   assert.throws(() => C.filterCycle(ID, pump, '08:30', 2), /filtre/);
 });
 
-test('allOff: seulement les équipements actifs, jamais circ/ozone/filtre/heater', () => {
+test('allOff: seulement les équipements actifs, jamais circulation (pilotable seule)/ozone/filtre/heater', () => {
   const s = st({ components: [
     { componentType: 'PUMP', port: '0', value: 'HIGH', availableValues: ['OFF', 'HIGH'] },
     { componentType: 'PUMP', port: '1', value: 'OFF', availableValues: ['OFF', 'HIGH'] },
