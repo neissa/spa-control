@@ -77,6 +77,7 @@
   <div class=foot>
     <button id=notif>Activer les notifications d'alerte</button>
     <button id=logout>Se déconnecter</button>
+    <small>La déconnexion efface les jetons et les données du compte ; relevés, événements et noms restent sur cet appareil.</small>
   </div>
   <p><small>Les relevés ne sont faits que page ouverte. Garder cet onglet ouvert pour surveiller le spa.</small></p>
 </div>
@@ -90,7 +91,9 @@ const $ = id => document.getElementById(id);
 const store = (k, v) => v === undefined ? JSON.parse(localStorage.getItem('spa.' + k) || 'null') : localStorage.setItem('spa.' + k, JSON.stringify(v));
 
 // Nom affiché : celui choisi par l'utilisateur, sinon modèle + série
-const label = id => (store('labels') || {})[id] || (store('names') || {})[id] || id;
+// Les objets stockés viennent de JSON.parse et ont un prototype : tout id (hash ou API) s'y lit via own().
+const own = (o, k) => o && typeof o === 'object' && Object.hasOwn(o, k) ? o[k] : undefined;
+const label = id => own(store('labels'), id) || own(store('names'), id) || id;
 
 // ---- API (lecture seule : seuls /auth/* utilisent POST) ----
 // shortcut: corps/réponse de /auth/login et /auth/refresh supposés ({email,password} / {refreshToken} -> {data:{accessToken,refreshToken}}); à confirmer au premier essai.
@@ -114,36 +117,44 @@ const log = (spa, msg, id) => {
   store('events', [{ ts: Date.now(), spa, msg, id }, ...(store('events') || [])].slice(0, 200));
   if (window.Notification && Notification.permission === 'granted') new Notification('Spa', { body: spa + ' : ' + msg });
 };
-const schedAt = {};
+const schedAt = Object.create(null);
+const authErr = e => !store('tokens') || /refresh|non connecté/.test(e.message);
 async function poll() {
   try {
     const { spas } = await get('/spas?page=0&pageSize=100');
     const now = Date.now(), all = store('samples') || {}, names = store('names') || {}, live = store('live') || {};
-    const info = store('info') || {}, scheds = store('schedules') || {};
+    const info = store('info') || {}, scheds = store('schedules') || {}, failed = [];
     for (const s of spas) {
-      names[s._id] = `${s.modelType || 'Spa'} ${s.serialNumber}`;
-      info[s._id] = s;
-      const state = await get(`/spas/${s._id}/current-state`);
-      const c8z = await get(`/spas/${s._id}/current-c8z`).catch(() => null);
-      if (!schedAt[s._id] || now - schedAt[s._id] > SCHED_MS) {
-        const d = await get(`/spa-schedules/findBySpa/${s._id}`).catch(() => null);
-        if (d) { scheds[s._id] = d.schedules || []; schedAt[s._id] = now; }
+      if (!s || typeof s._id !== 'string' || s._id === '__proto__') continue;
+      const id = s._id, q = encodeURIComponent(id);
+      names[id] = `${s.modelType || 'Spa'} ${s.serialNumber}`;
+      info[id] = s;
+      try { // un spa en échec ne bloque pas les autres et garde son état précédent (ce n'est pas « hors ligne »)
+        const state = await get(`/spas/${q}/current-state`);
+        const c8z = await get(`/spas/${q}/current-c8z`).catch(() => null);
+        if (!schedAt[id] || now - schedAt[id] > SCHED_MS) {
+          const d = await get(`/spa-schedules/findBySpa/${q}`).catch(() => null);
+          if (d) { scheds[id] = d.schedules || []; schedAt[id] = now; }
+        }
+        const x = SpaStats.compact(state, c8z, now), old = own(all, id) || [], prev = old.at(-1);
+        store('names', names);
+        if (prev && prev.online !== x.online) log(label(id), x.online ? 'de nouveau en ligne' : 'HORS LIGNE', id);
+        if (prev && prev.err !== x.err) log(label(id), `code erreur ${prev.err} -> ${x.err}`, id);
+        all[id] = [...old, x].filter(v => v.ts > now - KEEP_MS);
+        live[id] = { ts: now, state, c8z };
+      } catch (e) {
+        if (authErr(e)) throw e;
+        failed.push(`${label(id)} (${e.message})`);
       }
-      const x = SpaStats.compact(state, c8z, now), prev = (all[s._id] || []).at(-1);
-      store('names', names);
-      if (prev && prev.online !== x.online) log(label(s._id), x.online ? 'de nouveau en ligne' : 'HORS LIGNE', s._id);
-      if (prev && prev.err !== x.err) log(label(s._id), `code erreur ${prev.err} -> ${x.err}`, s._id);
-      all[s._id] = [...(all[s._id] || []), x].filter(v => v.ts > now - KEEP_MS);
-      live[s._id] = { ts: now, state, c8z };
     }
     store('names', names); store('live', live); store('info', info); store('schedules', scheds);
     try { store('samples', all); } catch (e) { log('app', 'localStorage plein, historique non enregistré'); }
-    $('err').textContent = '';
+    $('err').textContent = failed.length ? 'Relevé impossible pour : ' + failed.join(', ') + '. Les dernières données connues de ces spas restent affichées.' : '';
   } catch (e) {
     $('err').textContent = 'Actualisation impossible (' + e.message + '). Les dernières données connues restent affichées.';
-    if (!store('tokens') || /refresh|non connecté/.test(e.message)) show(false);
+    if (authErr(e)) show(false);
   }
-  render();
+  safeRender();
 }
 
 // ---- Affichage ----
@@ -158,7 +169,7 @@ const RANGE = { LOW: 'Basse', HIGH: 'Haute' };
 const val = v => v == null || v === '' ? '—' : esc(v);
 const status = ok => ok ? '<span class=status><span class=dot aria-hidden=true></span>En ligne</span>' : '<span class="status offl"><span class="dot off" aria-hidden=true></span>Hors ligne</span>';
 const ACTION = { ping: "Vérifier l'alimentation du spa et son Wi-Fi.", offline: "Vérifier l'alimentation du spa et son Wi-Fi.", error: 'Noter le code et contacter le revendeur.', clock: "Régler l'heure depuis le panneau du spa." };
-const route = () => { const m = /^#\/spa\/(.+)$/.exec(location.hash); return m ? decodeURIComponent(m[1]) : null; };
+const route = () => { const m = /^#\/spa\/(.+)$/.exec(location.hash); if (!m) return null; try { return decodeURIComponent(m[1]); } catch (e) { return null; } };
 const href = id => '#/spa/' + encodeURIComponent(id);
 // niveau d'eau : plage d'affichage 10-42 °C (shortcut: bornes fixes, suffisantes pour un spa)
 const pct = c => c == null ? 0 : Math.max(0, Math.min(100, (c - 10) / 32 * 100));
@@ -168,7 +179,7 @@ const group = (t, rows) => `<section><h2>${t}</h2><dl class=list>${rows}</dl></s
 
 function alertsHtml(live, info, now) {
   const items = [];
-  for (const [id, l] of Object.entries(live)) SpaView.alerts(l.state, info[id], now, { maxPingMin: 60 }).forEach(a => items.push({ id, a }));
+  for (const [id, l] of Object.entries(live)) SpaView.alerts(l.state, own(info, id), now, { maxPingMin: 60 }).forEach(a => items.push({ id, a }));
   items.sort((x, y) => (x.a.level === 'critical' ? 0 : 1) - (y.a.level === 'critical' ? 0 : 1));
   if (!items.length) return '<p class=ok>Aucune alerte : tout va bien.</p>';
   return '<ul class=alerts>' + items.map(({ id, a }) => `<li class="alert ${a.level}"><span class=badge aria-hidden=true></span><div>
@@ -180,7 +191,7 @@ function dashboard(live, info, all, now) {
   const since = now - 7 * 864e5;
   const cards = Object.entries(live).map(([id, { ts, state: x, c8z }]) => {
     const t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, c8z);
-    const r = SpaStats.runtimes((all[id] || []).filter(v => v.ts > since), POLL_MS * 3);
+    const r = SpaStats.runtimes((own(all, id) || []).filter(v => v.ts > since), POLL_MS * 3);
     return `<a class=card href="${esc(href(id))}" data-k="${esc(id)}">
       <h3>${esc(label(id))}</h3>${status(x.online)}
       <div class=temp>${esc(C(t.current))}</div>${waterBar(t.current, t.set)}
@@ -192,21 +203,21 @@ function dashboard(live, info, all, now) {
 }
 
 function detail(id, live, info, all, now) {
-  const l = live[id];
-  if (!l) return '<a class=back href="#/">‹ Tableau de bord</a><p class=ok>Spa inconnu ou pas encore relevé.</p>';
-  const x = l.state, t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, l.c8z), tc = SpaView.tech(x, info[id]);
+  const l = own(live, id);
+  if (!l) return '<a class=back href="#/">‹ Tableau de bord</a><p class=ok>Spa introuvable (inconnu ou pas encore relevé).</p>';
+  const x = l.state, inf = own(info, id), t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, l.c8z), tc = SpaView.tech(x, inf);
   const pl = {}; Object.entries(store('pumpLabels') || {}).forEach(([k, v]) => { if (k.startsWith(id + '|')) pl[k.slice(id.length + 1)] = v; });
   const comps = SpaView.components(x, pl);
-  const scheds = SpaView.schedules((store('schedules') || {})[id]);
-  const mine = (store('events') || []).filter(e => e.id === id || (!e.id && (e.spa === label(id) || e.spa === (store('names') || {})[id])));
-  const alerts = SpaView.alerts(x, info[id], now, { maxPingMin: 60 });
+  const scheds = SpaView.schedules(own(store('schedules'), id));
+  const mine = (store('events') || []).filter(e => e.id === id || (!e.id && (e.spa === label(id) || e.spa === own(store('names'), id))));
+  const alerts = SpaView.alerts(x, inf, now, { maxPingMin: 60 });
   const dev = new Date(now).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const ev = es => es.map(e => row(esc(T(e.ts)), esc(e.msg))).join('') || row('Aucun événement', '');
-  const errs = (x.statusMessages || []).map(m => row(esc(m.severity || 'Message'), esc(m.message))).join('');
+  const errs = tc.messages.map(m => row(esc(m.severity || 'Message'), esc(m.message))).join('');
   return `<a class=back href="#/">‹ Tableau de bord</a>
     <div class=sub>${status(x.online)} · relevé ${esc(T(l.ts))}</div>
     <p><button data-act=rename-spa>Renommer ce spa</button></p>
-    ${alerts.length ? alertsHtml({ [id]: l }, info, now) : ''}
+    ${alerts.length ? alertsHtml(Object.fromEntries([[id, l]]), info, now) : ''}
     ${group('Température', row('Eau', `<b class=temp style="font-size:28px;margin:0">${esc(C(t.current))}</b>`) + row('Consigne', esc(C(t.set))) +
       `<div class=row style="display:block">${waterBar(t.current, t.set)}</div>` +
       row('Plage active', val(RANGE[t.rangeMode] || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`))}
@@ -215,7 +226,7 @@ function detail(id, live, info, all, now) {
     ${group('Pompes et lumières', comps.map(k => row(esc(k.label), `${k.on ? '<span class=status><span class=dot aria-hidden=true></span>' : '<span>'}${esc(V[k.value] || k.value || '—')}</${k.on ? 'span' : 'span'}>` +
       `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
     ${group('Heure', row('Heure du spa', esc(c.text)) + row('Format', c.military ? '24 h' : '12 h') + row("Heure de l'appareil", esc(dev)) +
-      row('Écart', c.driftMin == null ? '—' : c.driftMin + ' min'))}
+      row('Écart', c.driftMin == null ? '—' : SpaView.driftText(c.driftMin)))}
     ${c.drifted ? "<p class=note>Mise à jour automatique indisponible : l'API du portail ne permet pas de régler l'heure. Réglez-la depuis le panneau du spa.</p>" : ''}
     ${group('Programmes (lecture seule)', scheds.map(s => row(`${esc(s.name)}${s.enabled ? '' : ' <small>(désactivé)</small>'}<br><small>${esc(s.time)} · ${esc(s.days.join(', '))}</small>`,
       `${esc(C(SpaStats.toC(s.setTemp, x.celsius)))}<br>${val(s.heaterMode)}`)).join('') || row('Aucun programme relevé', ''))}
@@ -229,22 +240,28 @@ function detail(id, live, info, all, now) {
 
 let lastKey;
 function render() {
-  const live = store('live') || {}, all = store('samples') || {}, info = store('info') || {}, now = Date.now(), id = route();
+  // on ne garde que les relevés bien formés (state objet)
+  const live = Object.fromEntries(Object.entries(store('live') || {}).filter(([, l]) => l && l.state && typeof l.state === 'object'));
+  const all = store('samples') || {}, info = store('info') || {}, now = Date.now(), id = route();
   const ae = document.activeElement, key = ae && ae.closest && ae.closest('#view') ? (ae.dataset.k || ae.dataset.act + (ae.dataset.key || '')) : null;
-  $('title').textContent = id && live[id] ? label(id) : 'Spa';
+  $('title').textContent = id && own(live, id) ? label(id) : 'Spa';
   $('view').innerHTML = id ? detail(id, live, info, all, now) : dashboard(live, info, all, now);
   if (key) { const n = [...document.querySelectorAll('#view [data-k],#view [data-act]')].find(e => (e.dataset.k || e.dataset.act + (e.dataset.key || '')) === key); if (n) n.focus(); }
   document.title = (Object.values(live).some(l => !l.state.online) ? '⚠ HORS LIGNE – ' : '') + 'Spa';
   if (lastKey !== (id || '/')) { lastKey = id || '/'; window.scrollTo(0, 0); $('title').focus(); }
 }
 
+// Un rendu qui échoue ne doit jamais empêcher les relevés : l'erreur va dans la zone d'erreur.
+function safeRender() {
+  try { render(); } catch (e) { $('err').textContent = 'Affichage impossible (' + e.message + ').'; }
+}
 let timer;
 function show(loggedIn) {
   $('login').hidden = loggedIn; $('app').hidden = !loggedIn;
   clearInterval(timer);
-  if (loggedIn) { render(); poll(); timer = setInterval(poll, POLL_MS); }
+  if (loggedIn) { timer = setInterval(poll, POLL_MS); poll(); safeRender(); }
 }
-window.onhashchange = () => store('tokens') && render();
+window.onhashchange = () => store('tokens') && safeRender();
 $('login').onsubmit = async e => {
   e.preventDefault();
   try { await post('/auth/login', { email: $('email').value, password: $('pwd').value }); $('pwd').value = ''; $('err').textContent = ''; show(true); }
@@ -265,9 +282,10 @@ $('view').onclick = e => {
     const l = store('pumpLabels') || {}; n.trim() ? l[k] = n.trim() : delete l[k];
     store('pumpLabels', l);
   }
-  render();
+  safeRender();
 };
-$('logout').onclick = () => { localStorage.removeItem('spa.tokens'); show(false); };
+// Données du compte effacées ; relevés, événements et libellés (historique local) conservés.
+$('logout').onclick = () => { for (const k of ['tokens', 'info', 'live', 'schedules']) localStorage.removeItem('spa.' + k); show(false); };
 $('notif').onclick = () => window.Notification && Notification.requestPermission();
 show(!!store('tokens'));
 </script>

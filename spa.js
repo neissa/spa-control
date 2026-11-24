@@ -10,9 +10,12 @@ var SpaView = (function () {
   var NAMES = { PUMP: 'Pompe', CIRCULATION_PUMP: 'Pompe de circulation', LIGHT: 'Lumière', BLOWER: 'Soufflerie', MISTER: 'Brumisateur', MICROSILK: 'Microsilk', AUX: 'Auxiliaire', OZONE: 'Ozone', FILTER: 'Filtre' };
   var KIND = { PUMP: 'pump', CIRCULATION_PUMP: 'pump', LIGHT: 'light' };
 
+  // Ignore les éléments qui ne sont pas des objets (données partielles de l'API).
+  var objs = function (a) { return (Array.isArray(a) ? a : []).filter(function (x) { return x && typeof x === 'object'; }); };
+
   function components(state, labels) {
     labels = labels || {};
-    var list = (state.components || []).filter(function (c) { return NAMES[c.componentType]; });
+    var list = objs(state.components).filter(function (c) { return Object.hasOwn(NAMES, c.componentType); });
     var count = {}, seen = {};
     list.forEach(function (c) { count[c.componentType] = (count[c.componentType] || 0) + 1; });
     return list.map(function (c) {
@@ -49,13 +52,19 @@ var SpaView = (function () {
   function clock(state, now, toleranceMin) {
     if (toleranceMin == null) toleranceMin = 5;
     var h = state.hour, m = state.minute, military = !!state.military;
-    var text = military ? pad(h) + ':' + pad(m) : ((h % 12) || 12) + ':' + pad(m) + (h < 12 ? ' AM' : ' PM');
+    var text = h == null || m == null ? '—' : military ? pad(h) + ':' + pad(m) : ((h % 12) || 12) + ':' + pad(m) + (h < 12 ? ' AM' : ' PM');
     var drift = null;
     if (state.year != null && state.month != null && state.day != null && h != null && m != null) {
       drift = Math.round((new Date(state.year, state.month - 1, state.day, h, m).getTime() - new Date(now).getTime()) / 60000);
     }
     var notSet = !!state.timeNotSet;
     return { text: text, military: military, notSet: notSet, driftMin: drift, drifted: notSet || (drift != null && Math.abs(drift) > toleranceMin) };
+  }
+
+  // Écart signé (min) -> texte lisible : négatif = horloge en retard.
+  function driftText(d) {
+    var a = Math.abs(d), t = a >= 60 ? Math.floor(a / 60) + ' h ' + (a % 60) + ' min' : a + ' min';
+    return (d < 0 ? 'en retard de ' : 'en avance de ') + t;
   }
 
   function heating(state, c8z) {
@@ -69,7 +78,7 @@ var SpaView = (function () {
     return {
       serial: n(state.spaSerialNumber != null ? state.spaSerialNumber : i.serialNumber), model: n(i.modelType), dealer: n(i.dealerName), oem: n(i.oemName),
       controller: n(state.controllerType), firmware: n(si.controllerSoftwareVersion), gateway: n(i.buildNumber),
-      salesDate: n(i.salesDate), registrationDate: n(i.registrationDate), errorCode: n(state.errorCode), messages: state.statusMessages || []
+      salesDate: n(i.salesDate), registrationDate: n(i.registrationDate), errorCode: n(state.errorCode), messages: objs(state.statusMessages)
     };
   }
 
@@ -92,8 +101,8 @@ var SpaView = (function () {
     if (p.stale) out.push({ level: 'warning', code: 'ping', text: p.lastSeen ? 'Aucun signal du spa depuis ' + Math.round(p.ageMin) + ' min.' : 'Aucun signal reçu du spa.' });
     if (state.online === false) out.push({ level: 'critical', code: 'offline', text: 'Le spa est hors ligne.' });
     if (state.errorCode) out.push({ level: 'critical', code: 'error', text: "Code d'erreur " + state.errorCode + '.' });
-    if (c.drifted) out.push({ level: 'warning', code: 'clock', text: c.notSet ? "L'horloge du spa n'est pas réglée." : "L'horloge du spa est décalée de " + c.driftMin + ' min : à corriger.' });
-    (state.statusMessages || []).forEach(function (m) {
+    if (c.drifted) out.push({ level: 'warning', code: 'clock', text: c.notSet ? "L'horloge du spa n'est pas réglée." : "L'horloge du spa est " + driftText(c.driftMin) + ' : à corriger.' });
+    objs(state.statusMessages).forEach(function (m) {
       var sev = String(m.severity || '').toUpperCase();
       if (sev === 'INFO') return;
       out.push({ level: sev === 'ERROR' || sev === 'CRITICAL' ? 'critical' : 'warning', code: 'msg:' + m.code, text: m.message });
@@ -101,6 +110,6 @@ var SpaView = (function () {
     return out;
   }
 
-  return { components: components, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
+  return { driftText: driftText, components: components, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;

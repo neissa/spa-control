@@ -98,3 +98,26 @@ test('alerts: aucune quand tout va bien, sinon une par problème', () => {
   assert.equal(a[1].level, 'critical');
   assert.equal(a[4].level, 'warning');
 });
+
+test('clock: heure ou minute manquante -> « — »; écart lisible', () => {
+  const s = ok(); delete s.hour;
+  assert.equal(V.clock(s, now).text, '—');
+  s.hour = 12; delete s.minute; s.military = false;
+  assert.equal(V.clock(s, now).text, '—');
+  assert.equal(V.driftText(-748), 'en retard de 12 h 28 min');
+  assert.equal(V.driftText(7), 'en avance de 7 min');
+  const t = ok(); t.hour = 0; t.minute = 12;
+  assert.equal(V.alerts(t, {}, now).find(a => a.code === 'clock').text, "L'horloge du spa est en retard de 11 h 48 min : à corriger.");
+});
+
+test('données partielles: éléments null et types de prototype ignorés', () => {
+  const s = ok();
+  s.components = [null, 'x', { componentType: 'constructor' }, { componentType: 'PUMP', port: 0, value: 'ON' }];
+  s.statusMessages = [null, 3, { code: 2, message: 'Filtre', severity: 'WARNING' }];
+  assert.deepEqual(V.components(s).map(c => c.key), ['PUMP:0']);
+  assert.deepEqual(V.alerts(s, {}, now).map(a => a.code), ['msg:2']);
+  assert.equal(V.tech(s, null).messages.length, 1);
+  s.components = null; s.statusMessages = null;
+  assert.deepEqual(V.components(s), []);
+  assert.deepEqual(V.alerts(s, {}, now), []);
+});
