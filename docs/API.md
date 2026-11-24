@@ -7,6 +7,14 @@ Essai vérifié : `POST /spa-commands/component-state` avec `{spaId, via:"WEB", 
 
 Essai pompe (24/11/2026, pompe 2 = `componentType:"jet"`, `deviceNumber:1`, `availableValues` `OFF/LOW/HIGH`) : la demande `state:"LOW"` renvoie HTTP 200 mais l'état relu devient **`HIGH`**, pas `LOW` ; la demande `state:"OFF"` éteint la pompe (confirmé en ~2 s). Le niveau demandé n'est donc pas garanti pour une pompe : toujours relire l'état réel (cette pompe est peut-être mono-vitesse malgré la liste d'états).
 
+### Essais réels sur un spa (24/11/2026, 3 pompes + 1 lumière, tous HTTP 200 « …set successfully »)
+- **Lumière** (`light`, `deviceNumber:0`) : `OFF` puis `HIGH`, chacun confirmé par `current-state` en ~2 s.
+- **Pompes 1, 2, 3** (`jet`, `deviceNumber` 0, 1, 2) : demander `LOW` depuis l'arrêt fait passer la pompe en **`HIGH`** en ~2 s, à chaque essai (4 essais sur 3 pompes). Une demande `HIGH` depuis l'arrêt n'a produit **aucun changement** en 18 s (1 essai) : pour allumer une pompe, demander `LOW` puis lire l'état réel.
+- **Arrêt** : `state:"OFF"` éteint les 3 pompes (confirmé en ~2 s, ~9 s pour la pompe 1), y compris la pompe 1 dont `availableValues` est seulement `LOW/HIGH` : l'absence de `OFF` dans la liste n'empêche pas l'arrêt.
+- **Verrouillage du panneau** : `UNLOCK_PANEL` fonctionne (HTTP 200, `panelLock` passe à `false` après ~9 s). `LOCK_PANEL` répond HTTP 200 mais `panelLock` est resté `false` plus d'une minute (2 envois) : le verrouillage à distance n'a pas pu être confirmé.
+- **Code d'erreur 38** (indication de l'utilisateur, cohérente avec les relevés) : « pas de filtration, donc pas de valeur de température » ; `currentTemp` vaut alors 0 ou une valeur absurde (262). Dès qu'une pompe a tourné : `errorCode:0`, plus de `statusMessages`, température lue. Ce n'est pas une panne.
+- `current-state` n'est rafraîchi par le serveur que toutes les ~30 s quand rien ne bouge : une confirmation peut attendre jusqu'à ~30 s.
+
 ## Lecture (GET, vérifiée)
 | Route | Contenu |
 |---|---|
