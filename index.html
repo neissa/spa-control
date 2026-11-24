@@ -344,7 +344,8 @@ const STALE_MS = 180000, CLOCK_MS = 90000; // état connu trop ancien pour comma
 // ---- Commandes : état d'interface en mémoire (survit aux rendus, jamais stocké) ----
 const ui = { busy: Object.create(null), lock: Object.create(null), pend: Object.create(null), draft: Object.create(null), fc: Object.create(null), focus: null };
 const kk = (id, ck) => id + '|' + ck;
-const hint = k => ui.pend[k] ? `<small class=hint>${esc(ui.pend[k].text)}</small>` : '';
+// Le texte d'attente (« En attente de confirmation… ») n'est affiché que dans le toast, pas dans la page.
+const hint = () => '';
 const dat = (cmd, id, key) => `data-cmd=${cmd} data-id="${esc(id)}"` + (key == null ? '' : ` data-key="${esc(key)}"`);
 const busyAttr = b => b ? ' disabled aria-busy=true' : '';
 function sw(id, ck, lbl, on, cmd, key, onT = 'Allumé', offT = 'Éteint') {
