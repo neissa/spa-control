@@ -107,6 +107,25 @@
   .chk input{display:inline-block;flex:none;width:24px;height:24px;min-height:24px;margin:0;accent-color:var(--water)}
   #sferr:not(:empty){margin:8px 0;padding:8px 12px;border-radius:10px;background:var(--crit-bg);color:var(--crit-text);font-weight:600}
   .dacts2{display:grid;gap:8px;margin-top:16px}.dacts2 button{justify-content:center}
+  /* Historique : courbe et pistes en SVG, couleurs par variables (clair/sombre). Eau = trait plein épais, consigne = tirets (jamais la couleur seule). */
+  .hist{padding:4px 16px 16px}.hist h3{font-size:17px;margin:20px 0 8px}.hist .seg{margin:12px 0 8px}.hist p{margin:8px 0}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.chips button{border-radius:22px;padding:0 14px}
+  .chips button[aria-pressed=true]{background:var(--water);color:var(--on-water);font-weight:700}.chips button[aria-pressed=true]::before{content:'✓ '}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:8px 0;font-size:15px;color:var(--text)}.legend span{display:inline-flex;align-items:center;gap:8px}
+  .hc{display:block;width:100%;height:auto;overflow:visible}
+  .hc text{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;fill:var(--text2);paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+  .hc .ann{fill:var(--text);font-size:14px;font-weight:600;paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+  .hc .lab{fill:var(--text);font-size:14px}
+  .hc .grid{stroke:var(--line);stroke-width:1}.hc .axis{stroke:var(--text2);stroke-width:1}
+  .hc .tl{fill:none;stroke:var(--water);stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
+  .hc .sl{fill:none;stroke:var(--text);stroke-width:2;stroke-dasharray:6 4}
+  .hc .dotw{fill:var(--water);stroke:var(--surface);stroke-width:2}.hc .dots{fill:var(--text)}
+  .hc .band{fill:var(--water)}.hc .trk{fill:none;stroke:var(--text2);stroke-width:1}
+  .legend svg{width:36px;height:12px;flex:none}.legend .tl,.legend .sl{fill:none}
+  details.hv summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600}
+  .hv .tw{overflow-x:auto}.hv table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:15px}
+  .hv th,.hv td{text-align:left;padding:8px 6px;border-top:1px solid var(--line)}.hv th{color:var(--text2);font-weight:600}
+  .chl{list-style:none;margin:0;padding:0}.chl li{padding:10px 0;border-top:1px solid var(--line);min-height:48px}.chl li:first-child{border-top:0}
 </style>
 <main>
 <h1 id=title tabindex=-1>Spa</h1>
@@ -151,6 +170,7 @@
 <script src="stats.js"></script>
 <script src="commands.js"></script>
 <script src="spa.js"></script>
+<script src="history.js"></script>
 <script>
 const API = 'https://iot.controlmyspa.com/web', POLL_MS = 60000, KEEP_MS = 14 * 864e5, SCHED_MS = 600000;
 const $ = id => document.getElementById(id);
@@ -203,6 +223,36 @@ const log = (spa, msg, id) => {
   store('events', [{ ts: Date.now(), spa, msg, id }, ...(store('events') || [])].slice(0, 200));
   if (window.Notification && Notification.permission === 'granted') new Notification('Spa', { body: spa + ' : ' + msg });
 };
+// ---- Historique (courbe + changements) : spa.hist {id: [[ts, °C eau, °C consigne]]}, spa.changes [{ts, spa, k, f, t}] (chronologique), spa.snap {id: dernier relevé des valeurs suivies} ----
+const HIST = { ageMs: 30 * 864e5, n: 9000, chAgeMs: 90 * 864e5, chN: 3000 };
+let histFull = false;
+function loadHist(now) { // JSON corrompu ou mal formé : ignoré
+  const obj = k => { const v = store(k); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; };
+  const hist = Object.create(null), snap = Object.create(null), rh = obj('hist'), rs = obj('snap'), c = store('changes');
+  for (const k of Object.keys(rh)) hist[k] = SpaHist.prune(Array.isArray(rh[k]) ? rh[k].filter(Array.isArray) : [], now, HIST.ageMs, HIST.n);
+  for (const k of Object.keys(rs)) if (rs[k] && typeof rs[k] === 'object') snap[k] = rs[k];
+  return { hist, snap, changes: SpaHist.prune((Array.isArray(c) ? c : []).filter(SpaHist.isChange), now, HIST.chAgeMs, HIST.chN) };
+}
+// Spa hors ligne ou état déjà vu (même updatedAt) : aucun point ni changement. Premier relevé d'un spa : aucun changement.
+function recordHist(h, id, state, prevState, now) {
+  if (state.online === false) return false;
+  if (state.updatedAt != null && prevState && prevState.updatedAt === state.updatedAt) return false;
+  const arr = h.hist[id] || (h.hist[id] = []), pt = SpaHist.point(state, now), snap = SpaHist.snapshot(state), before = own(h.snap, id) || null;
+  if (pt && SpaHist.shouldRecord(arr.at(-1), pt)) arr.push(pt);
+  h.changes.push(...SpaHist.diff(before, snap, now, id));
+  h.snap[id] = SpaHist.merge(before, snap);
+  return true;
+}
+function saveHist(h, now) {
+  for (const k of Object.keys(h.hist)) h.hist[k] = SpaHist.prune(h.hist[k], now, HIST.ageMs, HIST.n);
+  h.changes = SpaHist.prune(h.changes, now, HIST.chAgeMs, HIST.chN);
+  const put = () => { store('hist', h.hist); store('changes', h.changes); store('snap', h.snap); };
+  try { return put(); } catch (e) { /* quota : on retire les 20 % les plus anciens et on réessaie une fois */ }
+  for (const k of Object.keys(h.hist)) h.hist[k] = h.hist[k].slice(Math.ceil(h.hist[k].length * 0.2));
+  h.changes = h.changes.slice(Math.ceil(h.changes.length * 0.2));
+  try { put(); } catch (e) { /* toujours plein */ }
+  if (!histFull) { histFull = true; toast('Historique plein : les plus anciennes données ont été supprimées'); }
+}
 const schedAt = Object.create(null);
 const authErr = e => !store('tokens') || /refresh|non connecté/.test(e.message);
 async function poll() {
@@ -210,6 +260,7 @@ async function poll() {
     const { spas } = await get('/spas?page=0&pageSize=100');
     const now = Date.now(), all = store('samples') || {}, names = store('names') || {}, live = store('live') || {};
     const info = store('info') || {}, scheds = store('schedules') || {}, failed = [], fresh = [];
+    const hs = loadHist(now); let hsDirty = false;
     for (const s of spas) {
       if (!s || typeof s._id !== 'string' || s._id === '__proto__') continue;
       const id = s._id, q = encodeURIComponent(id);
@@ -227,6 +278,8 @@ async function poll() {
         if (prev && prev.online !== x.online) log(label(id), x.online ? 'de nouveau en ligne' : 'HORS LIGNE', id);
         const ec = prev && SpaView.errorChange(prev.err, x.err); if (ec) log(label(id), ec, id);
         all[id] = [...old, x].filter(v => v.ts > now - KEEP_MS);
+        const pl = own(live, id);
+        try { if (recordHist(hs, id, state, pl && pl.state, now)) hsDirty = true; } catch (e) { /* l'historique ne bloque jamais les relevés */ }
         live[id] = { ts: now, state, c8z }; fresh.push(id);
       } catch (e) {
         if (authErr(e)) throw e;
@@ -235,6 +288,7 @@ async function poll() {
     }
     store('names', names); store('live', live); store('info', info); store('schedules', scheds);
     try { store('samples', all); } catch (e) { log('app', 'localStorage plein, historique non enregistré'); }
+    if (hsDirty) saveHist(hs, now);
     $('err').textContent = failed.length ? 'Relevé impossible pour : ' + failed.join(', ') + '. Les dernières données connues de ces spas restent affichées.' : '';
     for (const id of fresh) await autoTime(id, live[id]).catch(() => {}); // seule commande envoyée sans clic (réglage « Correction automatique de l'heure »)
   } catch (e) {
@@ -455,6 +509,108 @@ function progHtml(id, list) {
     <small class=hint style="text-align:left">Les programmes ne dépendent pas de l'état en ligne du spa ; chaque action est confirmée par une relecture de la liste.</small></div>`;
 }
 
+// ---- Historique : affichage (courbe SVG sans dépendance, pistes d'activité, tableau, liste des changements) ----
+const HR = [['24h', '24 h', 864e5, '24 heures'], ['7d', '7 jours', 7 * 864e5, '7 jours'], ['30d', '30 jours', 30 * 864e5, '30 jours']];
+const HF = [['all', 'Tout'], ['mode', 'Mode'], ['range', 'Plage'], ['pump', 'Pompes'], ['light', 'Lumière']];
+const hv = { id: null, filter: 'all', pages: 1, open: false };
+const histRange = () => HR.find(r => r[0] === store('histRange')) || HR[0];
+const fnum = v => v.toFixed(1).replace('.', ',');
+const f1 = v => Math.round(v * 10) / 10;
+const fDT = ts => new Date(ts).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const hgeo = (W, from, to) => { const L = 42, R = 18, pw = W - L - R; return { L, R, pw, X: ts => L + (ts - from) / (to - from) * pw }; };
+function xTicks(from, to, pw, hours) {
+  const out = [], d = new Date(from);
+  if (hours) {
+    const step = [2, 3, 4, 6, 12].find(s => pw / (24 / s) >= 56) || 12;
+    d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
+    while (d.getHours() % step) d.setHours(d.getHours() + 1);
+    for (; d.getTime() <= to; d.setHours(d.getHours() + step)) out.push([d.getTime(), d.getHours() + ' h']);
+  } else {
+    const days = (to - from) / 864e5, step = [1, 2, 3, 5, 7, 10].find(s => pw / (days / s) >= 60) || 10;
+    d.setHours(0, 0, 0, 0); if (d.getTime() < from) d.setDate(d.getDate() + 1);
+    const o = days > 10 ? { day: 'numeric', month: 'short' } : { weekday: 'short', day: 'numeric' };
+    for (; d.getTime() <= to; d.setDate(d.getDate() + step)) out.push([d.getTime(), d.toLocaleDateString('fr-FR', o)]);
+  }
+  return out;
+}
+const xAxis = (g, ticks, y0, y1, yl) => ticks.map(([ts, t]) => `<line class=grid x1="${f1(g.X(ts))}" x2="${f1(g.X(ts))}" y1="${y0}" y2="${y1}"/><text x="${f1(g.X(ts))}" y="${yl}" text-anchor=middle>${esc(t)}</text>`).join('');
+function histChart(W, ser, ext, from, to, hours, summary, rname) {
+  const Ht = 210, T = 26, B = 28, g = hgeo(W, from, to), ph = Ht - T - B, Y = v => T + (ext.max - v) / (ext.max - ext.min) * ph, X = g.X;
+  const amp = ext.max - ext.min, step = [0.5, 1, 2, 5, 10].find(s => amp / s <= 6) || 10;
+  let yt = `<text x="${g.L - 6}" y="${T - 10}" text-anchor=end>°C</text>`;
+  for (let v = Math.ceil(ext.min / step - 1e-9) * step; v <= ext.max + 1e-9; v += step) yt += `<line class=grid x1="${g.L}" x2="${W - g.R}" y1="${f1(Y(v))}" y2="${f1(Y(v))}"/><text x="${g.L - 6}" y="${f1(Y(v)) + 4}" text-anchor=end>${step < 1 ? fnum(v) : Math.round(v)}</text>`;
+  const sl = ser.set.map(seg => {
+    if (seg.length === 1) return `<circle class=dots cx="${f1(X(seg[0][0]))}" cy="${f1(Y(seg[0][1]))}" r=3.5 />`;
+    let cy = Y(seg[0][1]), d = `M${f1(X(seg[0][0]))} ${f1(cy)}`;
+    for (const [ts, v] of seg.slice(1)) { const y = Y(v); if (y !== cy) { d += `H${f1(X(ts))}V${f1(y)}`; cy = y; } } // escalier : la consigne tient jusqu'au relevé suivant
+    return `<path class=sl d="${d}H${f1(X(seg[seg.length - 1][0]))}"/>`;
+  }).join('');
+  const tl = ser.temp.map(seg => {
+    if (seg.length === 1) return `<circle class=dotw cx="${f1(X(seg[0][0]))}" cy="${f1(Y(seg[0][1]))}" r=4 />`;
+    const pts = seg.filter((p, i) => i === 0 || i === seg.length - 1 || !(p[1] === seg[i - 1][1] && p[1] === seg[i + 1][1])); // plateaux : points intermédiaires inutiles
+    return `<path class=tl d="M${pts.map(p => f1(X(p[0])) + ' ' + f1(Y(p[1]))).join('L')}"/>`;
+  }).join('');
+  const last = ser.temp.length ? ser.temp[ser.temp.length - 1].at(-1) : null;
+  let ann = '';
+  if (last) {
+    const x = X(last[0]), y = Y(last[1]);
+    ann = `<circle class=dotw cx="${f1(x)}" cy="${f1(y)}" r=5 /><text class=ann x="${f1(x < g.L + 90 ? x + 8 : x - 8)}" y="${f1(y < T + 14 ? y + 20 : y - 10)}" text-anchor=${x < g.L + 90 ? 'start' : 'end'}>${esc(fnum(last[1]))} °C</text>`;
+  }
+  return `<svg class=hc viewBox="0 0 ${W} ${Ht}" role=img aria-label="${esc(summary)}"><title>Température de l'eau et consigne sur ${esc(rname)}</title><desc>${esc(summary)} Courbe pleine : température de l'eau. Escalier en tirets : consigne.</desc>
+    ${yt}${xAxis(g, xTicks(from, to, g.pw, hours), T, Ht - B, Ht - 8)}<line class=axis x1="${g.L}" x2="${g.L}" y1="${T}" y2="${Ht - B}"/><line class=axis x1="${g.L}" x2="${W - g.R}" y1="${Ht - B}" y2="${Ht - B}"/>${sl}${tl}${ann}</svg>`;
+}
+const actTxt = it => it.ms >= 60000 ? 'actif ' + SpaView.durationText(Math.round(it.ms / 60000)) : it.ms ? "actif moins d'1 min" : "pas d'activité";
+function histTracks(W, items, from, to, hours) {
+  const g = hgeo(W, from, to), RH = 42, Ht = items.length * RH + 28, X = g.X;
+  const rows = items.map((it, i) => {
+    const y0 = i * RH, by = y0 + 22;
+    return `<text class=lab x=0 y="${y0 + 15}">${esc(it.label)}</text><text x="${W - g.R}" y="${y0 + 15}" text-anchor=end>${esc(actTxt(it))}</text>
+      <rect class=trk x="${g.L}" y="${by}" width="${g.pw}" height=14 />${it.bands.map(([a, b]) => `<rect class=band x="${f1(X(a))}" y="${by}" width="${f1(Math.max(2, X(b) - X(a)))}" height=14 />`).join('')}`;
+  }).join('');
+  return `<svg class=hc viewBox="0 0 ${W} ${Ht}" role=img aria-label="${esc("Périodes d'activité : " + items.map(it => it.label + ' ' + actTxt(it)).join(' ; ') + '.')}">
+    ${xAxis(g, xTicks(from, to, g.pw, hours), 4, Ht - 24, Ht - 6)}${rows}</svg>`;
+}
+function histHtml(id, comps, now) {
+  const h = loadHist(now);
+  if (hv.id !== id) { hv.id = id; hv.filter = 'all'; hv.pages = 1; }
+  const pts = own(h.hist, id) || [], mine = h.changes.filter(c => c.spa === id), cur = own(h.snap, id);
+  const [rk, , ms, rname] = histRange(), to = now, from = now - ms, hours = rk === '24h';
+  const W = Math.max(260, ($('view').clientWidth || 340) - 34);
+  const rangeSeg = `<div class=seg role=group aria-label="Période du graphique">${HR.map(r => `<button ${dat('hrange', id, r[0])} aria-pressed=${r[0] === rk}>${r[1]}</button>`).join('')}</div>`;
+  const empty = !pts.length && !mine.length;
+  const ser = SpaHist.series(pts, from, to), tv = ser.temp.flat(), sv = ser.set.flat(), ext = SpaHist.extent(tv.concat(sv).map(p => p[1]));
+  let chart = '';
+  if (empty) chart = "<p class=sub>L'historique se remplit tant que cette page est ouverte.</p>";
+  else if (!ext) chart = `<p class=sub>Aucune température relevée sur ${esc(rname)}.</p>`;
+  else {
+    const lt = tv.length ? tv[tv.length - 1] : null;
+    let sum = lt ? `Température de l'eau sur ${rname} : minimum ${C(Math.min(...tv.map(p => p[1])))}, maximum ${C(Math.max(...tv.map(p => p[1])))}, dernière valeur ${C(lt[1])} (${fDT(lt[0])}).` : `Aucune température lisible sur ${rname}.`;
+    if (sv.length) sum += ` Dernière consigne relevée : ${C(sv[sv.length - 1][1])}.`;
+    const lg = c => `<svg class=hc viewBox="0 0 36 12" aria-hidden=true><line class=${c} x1=2 x2=34 y1=6 y2=6 /></svg>`;
+    chart = `<p>${esc(sum)}</p><div class=legend><span>${lg('tl')}Température de l'eau</span><span>${lg('sl')}Consigne</span></div>${histChart(W, ser, ext, from, to, hours, sum, rname)}`;
+  }
+  const t0 = Math.min(pts.length ? pts[0][0] : Infinity, ...mine.map(c => c.ts)), from2 = Number.isFinite(t0) ? Math.max(from, t0) : from;
+  const TRK = ['PUMP', 'CIRCULATION_PUMP', 'LIGHT', 'OZONE', 'FILTER'];
+  const items = Number.isFinite(t0) ? comps.filter(k => TRK.includes(k.type)).map(k => {
+    const bands = SpaHist.bands(mine, cur, from2, to, k.key).filter(b => b[1] > b[0]);
+    return { label: k.type === 'FILTER' ? k.label.replace(/^Filtre/, 'Cycle de filtration') : k.label, bands, ms: bands.reduce((s, [a, b]) => s + (b - a), 0) };
+  }) : [];
+  const tracks = items.length ? `<h3>Équipements actifs</h3>${histTracks(W, items, from, to, hours)}<p class=sub>Les pistes commencent au premier relevé et supposent l'état inchangé entre deux relevés.</p>` : '';
+  const rows = pts.filter(p => p[0] >= from && p[0] <= to).slice(-50).reverse();
+  const num = v => typeof v === 'number' ? C(v) : '—';
+  const table = rows.length ? `<details class=hv data-hv=1${hv.open ? ' open' : ''}><summary>Voir les valeurs</summary><div class=tw><table><caption class=sr>Derniers relevés sur ${esc(rname)}</caption><thead><tr><th scope=col>Heure</th><th scope=col>Température</th><th scope=col>Consigne</th></tr></thead><tbody>${rows.map(p => `<tr><td>${esc(fDT(p[0]))}</td><td>${esc(num(p[1]))}</td><td>${esc(num(p[2]))}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  const labs = {}; comps.forEach(k => { labs[k.key] = k.label; });
+  const all = mine.slice().sort((a, b) => b.ts - a.ts), fl = hv.filter === 'all' ? all : all.filter(c => SpaHist.kind(c) === hv.filter), shown = fl.slice(0, 30 * hv.pages);
+  const chips = `<div class=chips role=group aria-label="Type de changement">${HF.map(f => `<button ${dat('hfilter', id, f[0])} aria-pressed=${f[0] === hv.filter}>${f[1]}</button>`).join('')}</div>`;
+  const list = shown.length ? `<ul class=chl>${shown.map(c => `<li><span class=sub>${esc(fDT(c.ts))}</span><br>${esc(SpaHist.describe(c, k => own(labs, k)))}</li>`).join('')}</ul>` +
+    (fl.length > shown.length ? `<button class=btn ${dat('hmore', id)}>Voir plus (${fl.length - shown.length})</button>` : '')
+    : `<p class=sub>${all.length ? 'Aucun changement de ce type.' : "Aucun changement constaté depuis le début de l'historique"}</p>`;
+  return `<section><h2>Historique</h2><div class="list hist"><h3 style="margin-top:12px">Température</h3>${rangeSeg}${chart}${tracks}${table}
+    <h3>Changements constatés</h3>${chips}${list}
+    <p class=sub>Relevé page ouverte seulement, sur cet appareil : courbe gardée 30 jours, changements 90 jours.</p>
+    ${empty ? '' : `<button class="btn danger" ${dat('hclear', id)}>Effacer l'historique de ce spa</button>`}</div></section>`;
+}
+
 function detail(id, live, info, all, now) {
   const l = own(live, id);
   if (!l) return '<a class=back href="#/">‹ Tableau de bord</a><p class=ok>Spa introuvable (inconnu ou pas encore relevé).</p>';
@@ -480,6 +636,7 @@ function detail(id, live, info, all, now) {
       row('Plage active', val(own(RANGE, t.rangeMode) || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`) +
       `<div class="row blk"><strong>Nouvelle consigne</strong><div class=ctl>${tempCtl(id, t, x)}</div></div>` +
       tlkHtml)}
+    ${histHtml(id, comps, now)}
     ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(own(MODE_TXT, ht.mode) || 'Mode inconnu.')}</p></div>` +
       `<div class="row blk"><strong>Plage de température</strong><div class=ctl>${seg(id, 'range', 'range', 'Plage de température', [['HIGH', 'Haute'], ['LOW', 'Basse']], ht.range)}</div></div>` +
       row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('C8Zone', c8zHtml(ht)))}
@@ -716,6 +873,16 @@ async function doCmd(d) {
     }
     case 'fcancel': delete ui.fc[id]; return safeRender();
     case 'alloff': return allOff(id);
+    case 'hrange': if (HR.some(r => r[0] === d.key)) { try { store('histRange', d.key); } catch (e) { /* stockage inaccessible : période non mémorisée */ } } return safeRender();
+    case 'hfilter': hv.filter = HF.some(f => f[0] === d.key) ? d.key : 'all'; hv.pages = 1; return safeRender();
+    case 'hmore': hv.pages++; return safeRender();
+    case 'hclear': {
+      if (!await ask({ title: `Effacer l'historique de ${label(id)} ?`, text: 'Cette action est définitive.', ok: 'Effacer', danger: true })) return;
+      $('dlg').close();
+      const hh = loadHist(Date.now()); delete hh.hist[id]; delete hh.snap[id]; hh.changes = hh.changes.filter(c => c.spa !== id);
+      try { store('hist', hh.hist); store('changes', hh.changes); store('snap', hh.snap); toast('Historique effacé pour ce spa.'); } catch (e) { toast(`Effacement impossible (${e.message}).`, 'error'); }
+      return safeRender();
+    }
     case 'more': return loadLog(id, d.key, true);
     case 'fmt': {
       const l = own(store('live'), id); if (!l || !precheck(id, CLOCK_MS)) return; const mil = d.key === '24'; if (!!l.state.military === mil) return;
@@ -819,6 +986,8 @@ $('view').onclick = e => {
   }
   safeRender();
 };
+$('view').addEventListener('toggle', e => { if (e.target.dataset && e.target.dataset.hv) hv.open = e.target.open; }, true); // « Voir les valeurs » reste ouvert après un rendu
+let rzT; window.addEventListener('resize', () => { clearTimeout(rzT); rzT = setTimeout(() => { if (route() && store('tokens')) safeRender(); }, 250); }); // le graphique suit la largeur
 $('view').oninput = e => { const f = e.target.dataset.draft, id = route(); if (f && id) (ui.fc[id] || (ui.fc[id] = {}))[f] = e.target.value; };
 // Données du compte effacées ; relevés, événements et libellés (historique local) conservés.
 $('logout').onclick = () => { for (const k of ['tokens', 'info', 'live', 'schedules']) localStorage.removeItem('spa.' + k); show(false); };
