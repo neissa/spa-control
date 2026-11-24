@@ -14,4 +14,4 @@ Seuls les jetons sont gardés dans localStorage, pas le mot de passe.
 - Commandes (pompes, lumières, consigne) pas encore faites : appels non relevés.
 - Format du login/refresh et définition de « chauffe » à vérifier au premier essai.
 
-`npm test` : test des calculs de durées.
+`node --test` : test des calculs de durées.

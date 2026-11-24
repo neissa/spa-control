@@ -4,14 +4,14 @@ Page web 100 % navigateur (index.html + stats.js, localStorage) qui remplace le 
 
 ## Règles du projet
 - Ne jamais lire, afficher ni committer `.env`, mots de passe ou jetons (le dépôt est public).
-- Pas de dépendance ni de build : garder index.html + stats.js. `npm test` doit passer.
+- Pas de dépendance ni de build : garder index.html + stats.js. `node --test` doit passer.
 - Ne pas envoyer de commande d'écriture au spa (pompes, lumières, consigne) sans accord explicite de l'utilisateur.
 - Commits et push seulement sur demande.
 
 ## Méthode de travail
 1. Avant toute action : écrire un plan court.
 2. Exécuter. Tout agent qui modifie des fichiers est lancé en worktree dédié (`isolation: "worktree"`) ; les agents `spa-scout` et `spa-reviewer` sont en lecture seule et n'en ont pas besoin.
-3. Lancer `npm test` et vérifier le résultat réel (syntaxe de index.html, comportement attendu) avant de déclarer que c'est fini.
+3. Lancer `node --test` et vérifier le résultat réel (syntaxe de index.html, comportement attendu) avant de déclarer que c'est fini.
 4. Fusionner le worktree dans la branche seulement si tout est vert, puis demander avant de pousser.
 
 ## Routage des modèles
