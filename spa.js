@@ -1,14 +1,14 @@
 // Logique pure de lecture du spa (aucun réseau, aucun DOM). Chargé par index.html (classique) et par les tests (require).
 var SpaView = (function () {
-  // Copie de SpaStats.toC pour rester autonome dans le navigateur comme sous node. 0 = pas de mesure.
-  function toC(v, celsius) {
-    v = Number(v); if (!v) return null;
-    return Math.round((celsius ? v : (v - 32) * 5 / 9) * 10) / 10;
-  }
+  // Copie de SpaStats.toC pour rester autonome : °F arrondi à l'entier (toF), puis °C arrondi à 0,5; null si 0/absent ou hors 32-140 °F.
+  function toF(v) { v = Math.round(Number(v)); return !v || v < 32 || v > 140 ? null : v; }
+  function toC(v) { var f = toF(v); return f == null ? null : Math.round((f - 32) * 5 / 9 * 2) / 2; }
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
 
   var NAMES = { PUMP: 'Pompe', CIRCULATION_PUMP: 'Pompe de circulation', LIGHT: 'Lumière', BLOWER: 'Soufflerie', MISTER: 'Brumisateur', MICROSILK: 'Microsilk', AUX: 'Auxiliaire', OZONE: 'Ozone', FILTER: 'Filtre' };
   var KIND = { PUMP: 'pump', CIRCULATION_PUMP: 'pump', LIGHT: 'light' };
+  var NEEDS_PORT = ['PUMP', 'LIGHT', 'BLOWER', 'MISTER', 'AUX'];
+  var portOk = function (c) { return c.port != null && c.port !== '' && isFinite(Number(c.port)); };
 
   // Ignore les éléments qui ne sont pas des objets (données partielles de l'API).
   var objs = function (a) { return (Array.isArray(a) ? a : []).filter(function (x) { return x && typeof x === 'object'; }); };
@@ -18,16 +18,24 @@ var SpaView = (function () {
     var list = objs(state.components).filter(function (c) { return Object.hasOwn(NAMES, c.componentType); });
     var count = {}, seen = {};
     list.forEach(function (c) { count[c.componentType] = (count[c.componentType] || 0) + 1; });
-    return list.map(function (c) {
+    var out = list.map(function (c) {
       var t = c.componentType, i = seen[t] = (seen[t] || 0) + 1;
       var key = t + ':' + (c.port != null ? c.port : i - 1);
       return {
         key: key, type: t, kind: KIND[t] || 'other', comp: c,
-        label: labels[key] || NAMES[t] + (count[t] > 1 ? ' ' + i : ''),
+        label: (Object.hasOwn(labels, key) && labels[key]) || NAMES[t] + (count[t] > 1 ? ' ' + i : ''),
         value: c.value == null ? null : c.value,
         on: !!c.value && c.value !== 'OFF' && c.value !== 'DISABLED'
       };
     });
+    // Jamais de commande sur le mauvais composant : port requis absent, ou clé partagée par deux composants => ambigu, aucun contrôle.
+    var keys = {};
+    out.forEach(function (k) { keys[k.key] = (keys[k.key] || 0) + 1; });
+    out.forEach(function (k) {
+      k.ambiguous = (NEEDS_PORT.indexOf(k.type) >= 0 && !portOk(k.comp)) || keys[k.key] > 1;
+      k.control = k.ambiguous ? null : control(k.comp);
+    });
+    return out;
   }
 
   // Contrôle proposé pour un composant : interrupteur (OFF + un état), bouton à niveaux (>= 3 états) ou rien. Même liste que SpaCmd.allOff + circulation exclue.
@@ -40,10 +48,11 @@ var SpaView = (function () {
   }
 
   function temps(state) {
-    var p = state.setupParams || {}, c = state.celsius;
+    var p = state.setupParams || {};
     return {
-      current: toC(state.currentTemp, c), set: toC(state.desiredTemp, c),
-      range: { lowMin: toC(p.lowRangeLow, c), lowMax: toC(p.lowRangeHigh, c), highMin: toC(p.highRangeLow, c), highMax: toC(p.highRangeHigh, c) },
+      current: toC(state.currentTemp), set: toC(state.desiredTemp), setF: toF(state.desiredTemp),
+      rangeF: { lowMin: toF(p.lowRangeLow), lowMax: toF(p.lowRangeHigh), highMin: toF(p.highRangeLow), highMax: toF(p.highRangeHigh) },
+      range: { lowMin: toC(p.lowRangeLow), lowMax: toC(p.lowRangeHigh), highMin: toC(p.highRangeLow), highMax: toC(p.highRangeHigh) },
       rangeMode: state.tempRange
     };
   }
@@ -122,6 +131,6 @@ var SpaView = (function () {
     return out;
   }
 
-  return { driftText: driftText, components: components, control: control, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
+  return { toC: toC, toF: toF, driftText: driftText, components: components, control: control, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;

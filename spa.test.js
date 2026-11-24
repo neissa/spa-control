@@ -4,7 +4,7 @@ const V = require('./spa.js');
 
 const now = new Date(2026, 0, 15, 12, 0);
 const ok = () => ({
-  online: true, currentTemp: '38.00', desiredTemp: '39.00', celsius: true, tempRange: 'HIGH', heaterMode: 'READY', ecoMode: false,
+  online: true, currentTemp: '100.40', desiredTemp: '102.20', celsius: true, tempRange: 'HIGH', heaterMode: 'READY', ecoMode: false,
   hour: 12, minute: 0, day: 15, month: 1, year: 2026, military: true, timeNotSet: false,
   uplinkTimestamp: new Date(2026, 0, 15, 11, 50).toISOString(), updatedAt: new Date(2026, 0, 15, 11, 45).toISOString(),
   errorCode: 0, statusMessages: [], controllerType: 'NGSC',
@@ -23,17 +23,22 @@ test('components: filtre, numérote, clés stables, label perso prioritaire', ()
   assert.deepEqual(c.map(x => x.key), ['PUMP:0', 'PUMP:1', 'LIGHT:0', 'OZONE:0', 'FILTER:0']);
   assert.deepEqual(c.map(x => x.label), ['Pompe 1', 'Jets dos', 'Lumière', 'Ozone', 'Filtre']);
   assert.deepEqual(c.map(x => x.on), [false, true, true, false, false]);
+  assert.deepEqual(c.map(x => x.ambiguous), [false, false, true, false, false]); // LIGHT sans port
   assert.deepEqual(c.map(x => x.kind), ['pump', 'pump', 'light', 'other', 'other']);
 });
 
-test('temps: °F -> °C, 0 -> null, plages', () => {
-  const s = ok(); s.celsius = false; s.currentTemp = '0.00'; s.desiredTemp = '104.00';
-  const t = V.temps(s);
-  assert.equal(t.current, null);
-  assert.equal(t.set, 40);
-  assert.equal(t.range.lowMin, 10);
-  assert.equal(t.range.highMax, 40);
-  assert.equal(t.rangeMode, 'HIGH');
+test('temps: toujours °F -> °C (celsius true ou false), 0 et 262 -> null, plages', () => {
+  for (const celsius of [true, false]) {
+    const s = ok(); s.celsius = celsius; s.currentTemp = '0.00'; s.desiredTemp = '50.90';
+    const t = V.temps(s);
+    assert.equal(t.current, null);
+    assert.equal(t.set, 10.5);
+    assert.equal(t.range.lowMin, 10); assert.equal(t.range.lowMax, 37);
+    assert.equal(t.range.highMin, 26.5); assert.equal(t.range.highMax, 40);
+    assert.equal(t.setF, 51); assert.deepEqual(t.rangeF, { lowMin: 50, lowMax: 99, highMin: 80, highMax: 104 });
+    assert.equal(t.rangeMode, 'HIGH');
+  }
+  assert.equal(V.temps(Object.assign(ok(), { currentTemp: '262.00' })).current, null);
   assert.equal(V.temps(ok()).current, 38);
 });
 
@@ -133,6 +138,19 @@ test('données partielles: éléments null et types de prototype ignorés', () =
   s.components = null; s.statusMessages = null;
   assert.deepEqual(V.components(s), []);
   assert.deepEqual(V.alerts(s, {}, now), []);
+});
+
+test('components: sans port ou clé en double => aucun contrôle', () => {
+  const sw = (type, port, extra) => Object.assign({ componentType: type, port, value: 'OFF', availableValues: ['OFF', 'HIGH'] }, extra);
+  const ctl = comps => { const s = ok(); s.components = comps; return V.components(s).map(k => !!k.control); };
+  assert.deepEqual(ctl([sw('PUMP', 1), sw('PUMP', null)]), [false, false]); // même clé PUMP:1
+  assert.deepEqual(ctl([sw('PUMP', 0), sw('PUMP', 1)]), [true, true]);
+  assert.deepEqual(ctl([sw('PUMP', 1), sw('PUMP', '1')]), [false, false]);
+  for (const bad of [null, undefined, '', 'x']) assert.deepEqual(ctl([sw('LIGHT', bad)]), [false]);
+  assert.deepEqual(ctl([sw('MICROSILK', null)]), [true]); // pas de port requis
+  assert.deepEqual(ctl([{ componentType: 'PUMP', port: 0, value: 'LOW', availableValues: ['LOW', 'HIGH'] }]), [false]); // sans OFF
+  const s = ok(); s.components = [sw('PUMP', 0)];
+  assert.equal(V.components(s, { toString: 'x', constructor: 'y' })[0].label, 'Pompe'); // libellés lus par hasOwn
 });
 
 test('control: interrupteur, niveaux, ou rien', () => {

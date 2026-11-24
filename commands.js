@@ -6,7 +6,6 @@ var SpaCmd = (function () {
   var ORDER = ['OFF', 'LOW', 'MED', 'HIGH', 'ON'];
   var HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-  var r1 = function (x) { return Math.round(x * 10) / 10; };
 
   function req(spaId, path, extra) {
     if (typeof spaId !== 'string' || !spaId) throw new Error('Identifiant du spa manquant.');
@@ -43,17 +42,21 @@ var SpaCmd = (function () {
     return list[(list.indexOf(comp.value) + 1) % list.length]; // valeur inconnue (-1) => list[0] (OFF)
   }
 
-  function temperature(spaId, celsius, state) {
-    if (typeof celsius !== 'number' || !isFinite(celsius)) throw new Error('Consigne invalide : nombre attendu.');
-    var c = Math.round(celsius * 2) / 2;
+  // Consigne en °F ENTIERS (comme le portail). Bornes de la plage active (setupParams, toujours en °F) puis plafond absolu 50-104 °F (10-40 °C).
+  function temperatureF(spaId, f, state) {
+    if (typeof f !== 'number' || !isFinite(f) || Math.round(f) !== f) throw new Error('Consigne invalide : entier en °F attendu.');
     var p = (state && state.setupParams) || {}, lo, hi;
     if (state && state.tempRange === 'LOW') { lo = p.lowRangeLow; hi = p.lowRangeHigh; }
     else if (state && state.tempRange === 'HIGH') { lo = p.highRangeLow; hi = p.highRangeHigh; }
-    lo = Number(lo); hi = Number(hi);
+    lo = Math.round(Number(lo)); hi = Math.round(Number(hi));
     if (!lo || !hi) throw new Error('Plage de température du spa inconnue.');
-    if (state.celsius === false) { lo = (lo - 32) * 5 / 9; hi = (hi - 32) * 5 / 9; }
-    if (c < lo - 0.1 || c > hi + 0.1) throw new Error('Consigne ' + c + ' °C hors plage (' + r1(lo) + '–' + r1(hi) + ' °C).');
-    return req(spaId, '/temperature/value', { value: r1(c * 9 / 5 + 32) });
+    if (f < lo || f > hi) throw new Error('Consigne ' + f + ' °F hors plage (' + lo + '–' + hi + ' °F).');
+    if (f < 50 || f > 104) throw new Error('Consigne ' + f + ' °F refusée : limite absolue 50–104 °F (10–40 °C).');
+    return req(spaId, '/temperature/value', { value: f });
+  }
+  function temperature(spaId, celsius, state) {
+    if (typeof celsius !== 'number' || !isFinite(celsius)) throw new Error('Consigne invalide : nombre attendu.');
+    return temperatureF(spaId, Math.round(celsius * 9 / 5 + 32), state);
   }
 
   function heaterMode(spaId, mode) { return req(spaId, '/temperature/heater-mode', { mode: oneOf(mode, ['READY', 'REST', 'READY_REST'], 'Mode') }); }
@@ -91,11 +94,25 @@ var SpaCmd = (function () {
 
   // Éteint seulement les équipements de confort. Jamais CIRCULATION_PUMP, OZONE, FILTER, HEATER :
   // ce sont des systèmes automatiques (filtration, désinfection, chauffe) qu'on ne coupe pas d'un clic.
-  function allOff(spaId, state) {
-    var list = state && Array.isArray(state.components) ? state.components : [];
-    return list.filter(function (c) {
-      return c && ['PUMP', 'LIGHT', 'BLOWER', 'MISTER', 'AUX', 'MICROSILK'].indexOf(c.componentType) >= 0 && c.value && c.value !== 'OFF' && c.value !== 'DISABLED';
-    }).map(function (c) { return component(spaId, c, 'OFF'); });
+  // Renvoie {requests, skipped}: un composant allumé qui ne peut pas être éteint (pas de OFF, port manquant, même port
+  // qu'un autre) est SAUTÉ et listé dans skipped [{label, reason}]; chaque requête porte .comp (le composant visé).
+  function allOff(spaId, state, labelOf) {
+    if (typeof spaId !== 'string' || !spaId) throw new Error('Identifiant du spa manquant.');
+    var list = (state && Array.isArray(state.components) ? state.components : []).filter(function (c) { return c && typeof c === 'object'; });
+    var same = {};
+    list.forEach(function (c) { var k = c.componentType + ':' + c.port; same[k] = (same[k] || 0) + 1; });
+    var requests = [], skipped = [];
+    list.forEach(function (c) {
+      if (['PUMP', 'LIGHT', 'BLOWER', 'MISTER', 'AUX', 'MICROSILK'].indexOf(c.componentType) < 0 || !c.value || c.value === 'OFF' || c.value === 'DISABLED') return;
+      var label = labelOf ? labelOf(c) : c.componentType + (c.port != null ? ' ' + c.port : '');
+      if (same[c.componentType + ':' + c.port] > 1) return skipped.push({ label: label, reason: 'composant ambigu (même port)' });
+      var av = Array.isArray(c.availableValues) ? c.availableValues : [];
+      if (av.indexOf('OFF') < 0) return skipped.push({ label: label, reason: "pas d'état Éteint disponible" });
+      if (NEEDS_DEVICE[c.componentType] && (c.port == null || c.port === '' || !isFinite(Number(c.port)))) return skipped.push({ label: label, reason: 'port manquant' });
+      try { var r = component(spaId, c, 'OFF'); r.comp = c; requests.push(r); }
+      catch (e) { skipped.push({ label: label, reason: e.message }); }
+    });
+    return { requests: requests, skipped: skipped };
   }
 
   // Ne bloque que sur l'absence d'état ou le spa hors ligne (pas sur panelLock). À appeler avant tout envoi.
@@ -105,6 +122,6 @@ var SpaCmd = (function () {
     return { ok: true, reason: null };
   }
 
-  return { component: component, nextState: nextState, temperature: temperature, heaterMode: heaterMode, range: range, panel: panel, scale: scale, filter2: filter2, timeFormat: timeFormat, filterCycle: filterCycle, allOff: allOff, guard: guard };
+  return { component: component, nextState: nextState, temperature: temperature, temperatureF: temperatureF, heaterMode: heaterMode, range: range, panel: panel, scale: scale, filter2: filter2, timeFormat: timeFormat, filterCycle: filterCycle, allOff: allOff, guard: guard };
 })();
 if (typeof module !== 'undefined') module.exports = SpaCmd;

@@ -7,7 +7,7 @@ const B = (path, extra) => ({ path, body: Object.assign({ spaId: ID, via: 'WEB' 
 const pump = { componentType: 'PUMP', port: '1', value: 'OFF', availableValues: ['OFF', 'LOW', 'HIGH'] };
 const st = (o) => Object.assign({
   online: true, celsius: true, tempRange: 'HIGH', hour: 7, minute: 5,
-  setupParams: { lowRangeLow: 10, lowRangeHigh: 37, highRangeLow: 27, highRangeHigh: 40 }, components: []
+  setupParams: { lowRangeLow: 50, lowRangeHigh: 99, highRangeLow: 80, highRangeHigh: 104 }, components: [] // bornes toujours en °F
 }, o);
 
 test('component: URL et corps exacts', () => {
@@ -48,20 +48,33 @@ test('nextState: 3 listes', () => {
 
 test('temperature: arrondi 0,5 et conversion °F', () => {
   const s = st({ tempRange: 'LOW' });
-  assert.deepEqual(C.temperature(ID, 10.5, s), B('/temperature/value', { value: 50.9 }));
+  assert.deepEqual(C.temperature(ID, 10.5, s), B('/temperature/value', { value: 51 }));
   assert.equal(C.temperature(ID, 10, s).body.value, 50);
-  assert.equal(C.temperature(ID, 37, s).body.value, 98.6);
-  assert.equal(C.temperature(ID, 36.8, s).body.value, 98.6); // 36.8 -> 37.0
-  assert.equal(C.temperature(ID, 36.7, s).body.value, 97.7); // 36.7 -> 36.5
+  assert.equal(C.temperature(ID, 37, s).body.value, 99);
+  assert.equal(C.temperature(ID, 36.8, s).body.value, 98); // 98,24 °F -> 98
+  assert.equal(C.temperature(ID, 13, s).body.value, 55);
+  assert.ok(Number.isInteger(C.temperature(ID, 22.3, s).body.value)); // toujours un entier
+  assert.deepEqual(C.temperatureF(ID, 51, s), B('/temperature/value', { value: 51 }));
+  for (const bad of [50.5, '51', NaN, null, Infinity]) assert.throws(() => C.temperatureF(ID, bad, s), /entier/);
 });
 
 test('temperature: plage active, °F du boîtier, erreurs', () => {
-  assert.throws(() => C.temperature(ID, 9, st({ tempRange: 'LOW' })), /hors plage \(10–37 °C\)/);
-  assert.throws(() => C.temperature(ID, 26, st()), /hors plage \(27–40 °C\)/);
-  assert.equal(C.temperature(ID, 26, st({ tempRange: 'LOW' })).body.value, 78.8);
+  assert.throws(() => C.temperature(ID, 9, st({ tempRange: 'LOW' })), /hors plage \(50–99 °F\)/);
+  assert.throws(() => C.temperature(ID, 26, st()), /hors plage \(80–104 °F\)/);
+  assert.throws(() => C.temperature(ID, 38, st({ tempRange: 'LOW' })), /hors plage/); // 100 °F > 99
+  assert.throws(() => C.temperature(ID, 37.5, st({ tempRange: 'LOW' })), /hors plage/); // 99,5 °F -> 100 > 99
+  assert.equal(C.temperature(ID, 40, st()).body.value, 104);
+  assert.throws(() => C.temperatureF(ID, 105, st({ setupParams: { highRangeLow: 80, highRangeHigh: 110 } })), /limite absolue/);
+  // plafond absolu 10-40 °C même si les bornes annoncent plus large
+  const wide = st({ tempRange: 'LOW', setupParams: { lowRangeLow: 33, lowRangeHigh: 139 } });
+  assert.throws(() => C.temperature(ID, 5, wide), /limite absolue/);
+  assert.throws(() => C.temperature(ID, 45, wide), /limite absolue/);
+  assert.equal(C.temperature(ID, 20, wide).body.value, 68);
+  assert.throws(() => C.temperatureF(ID, 49, st({ tempRange: 'LOW', setupParams: { lowRangeLow: 33, lowRangeHigh: 139 } })), /limite absolue/);
+  assert.equal(C.temperature(ID, 26, st({ tempRange: 'LOW' })).body.value, 79);
   const f = st({ celsius: false, tempRange: 'LOW', setupParams: { lowRangeLow: 50, lowRangeHigh: 99 } });
   assert.equal(C.temperature(ID, 10, f).body.value, 50);
-  assert.equal(C.temperature(ID, 37, f).body.value, 98.6);
+  assert.equal(C.temperature(ID, 37, f).body.value, 99);
   assert.throws(() => C.temperature(ID, 38, f), /hors plage/);
   for (const bad of [NaN, Infinity, '38', null]) assert.throws(() => C.temperature(ID, bad, st()), /invalide/);
   assert.throws(() => C.temperature(ID, 30, st({ setupParams: {} })), /inconnue/);
@@ -114,10 +127,30 @@ test('allOff: seulement les équipements actifs, jamais circ/ozone/filtre/heater
     { componentType: 'HEATER', value: 'ON', availableValues: ['OFF', 'ON'] }
   ] });
   const r = C.allOff(ID, s);
-  assert.deepEqual(r.map(x => x.body.componentType), ['jet', 'light', 'microsilk']);
-  assert.ok(r.every(x => x.body.state === 'OFF'));
-  assert.deepEqual(C.allOff(ID, st({ components: [{ componentType: 'PUMP', port: 0, value: 'OFF', availableValues: ['OFF'] }] })), []);
-  assert.deepEqual(C.allOff(ID, null), []);
+  assert.deepEqual(r.requests.map(x => x.body.componentType), ['jet', 'light', 'microsilk']);
+  assert.ok(r.requests.every(x => x.body.state === 'OFF'));
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(C.allOff(ID, st({ components: [{ componentType: 'PUMP', port: 0, value: 'OFF', availableValues: ['OFF'] }] })), { requests: [], skipped: [] });
+  assert.deepEqual(C.allOff(ID, null), { requests: [], skipped: [] });
+});
+
+test('allOff: spa B, composant allumé sans OFF / sans port / en double => sauté, pas d\'exception', () => {
+  const s = st({ components: [
+    { componentType: 'PUMP', port: '0', value: 'LOW', availableValues: ['LOW', 'HIGH'] }, // pas de OFF
+    { componentType: 'PUMP', port: '1', value: 'HIGH', availableValues: ['OFF', 'LOW', 'HIGH'] },
+    { componentType: 'PUMP', port: null, value: 'LOW', availableValues: ['OFF', 'LOW', 'HIGH'] }, // port manquant
+    { componentType: 'LIGHT', port: '0', value: 'ON', availableValues: ['OFF', 'ON'] },
+    { componentType: 'LIGHT', port: '0', value: 'ON', availableValues: ['OFF', 'ON'] } // même port
+  ] });
+  const r = C.allOff(ID, s, c => 'N' + c.componentType);
+  assert.deepEqual(r.requests.map(x => x.body.deviceNumber), [1]);
+  assert.equal(r.requests[0].comp, s.components[1]);
+  assert.equal(r.skipped.length, 4);
+  assert.match(r.skipped[0].reason, /pas d'état Éteint/);
+  assert.equal(r.skipped[0].label, 'NPUMP');
+  assert.match(r.skipped[1].reason, /port manquant/);
+  assert.match(r.skipped[2].reason, /ambigu/);
+  assert.throws(() => C.allOff('', s), /Identifiant/);
 });
 
 test('guard: hors ligne, absent, panelLock non bloquant', () => {

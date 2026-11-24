@@ -264,9 +264,10 @@ const row = (k, v) => `<div class=row><dt>${k}</dt><dd>${v}</dd></div>`;
 const group = (t, rows) => `<section><h2>${t}</h2><dl class=list>${rows}</dl></section>`;
 const pumpLabels = id => { const pl = {}; Object.entries(store('pumpLabels') || {}).forEach(([k, v]) => { if (k.startsWith(id + '|')) pl[k.slice(id.length + 1)] = v; }); return pl; };
 const experimental = () => store('experimental') === true;
+const STALE_MS = 180000, CLOCK_MS = 90000; // état connu trop ancien pour commander / pour renvoyer l'heure du spa
 
 // ---- Commandes : état d'interface en mémoire (survit aux rendus, jamais stocké) ----
-const ui = { busy: Object.create(null), pend: Object.create(null), draft: Object.create(null), fc: Object.create(null), focus: null };
+const ui = { busy: Object.create(null), lock: Object.create(null), pend: Object.create(null), draft: Object.create(null), fc: Object.create(null), focus: null };
 const kk = (id, ck) => id + '|' + ck;
 const hint = k => ui.pend[k] ? `<small class=hint>${esc(ui.pend[k].text)}</small>` : '';
 const dat = (cmd, id, key) => `data-cmd=${cmd} data-id="${esc(id)}"` + (key == null ? '' : ` data-key="${esc(key)}"`);
@@ -275,20 +276,24 @@ function sw(id, ck, lbl, on, cmd, key, onT = 'Allumé', offT = 'Éteint') {
   const k = kk(id, ck), b = !!ui.busy[k];
   return `<button class=sw role=switch aria-checked=${on ? 'true' : 'false'} aria-label="${esc(lbl)}" ${dat(cmd, id, key)}${busyAttr(b)}><span class=swt>${b ? 'Envoi…' : on ? onT : offT}</span><span class=track aria-hidden=true><span class=thumb></span></span></button>${hint(k)}`;
 }
+// Verrou par spa : une seule commande de composant / « Tout éteindre » à la fois (envoi + attente de confirmation).
+const spaLock = id => { for (const v of Object.values(ui.lock)) if (v.id === id) return v.what; return null; };
 function compCtl(id, k) {
-  const c = SpaView.control(k.comp), ck = 'c:' + k.key;
-  if (!c) return `${k.on ? '<span class=status><span class=dot aria-hidden=true></span>' : '<span>'}${esc(V[k.value] || k.value || '—')}</span>`;
+  const c = k.control, ck = 'c:' + k.key;
+  if (!c) return `${k.on ? '<span class=status><span class=dot aria-hidden=true></span>' : '<span>'}${esc(own(V, k.value) || k.value || '—')}</span>${k.ambiguous ? '<small class=hint>Commande indisponible : composant non identifiable (port absent ou en double).</small>' : ''}`;
   if (c.kind === 'switch') return sw(id, ck, k.label, k.on, 'comp', k.key);
   let nx = ''; try { nx = SpaCmd.nextState(k.comp); } catch (e) { /* pas d'état suivant */ }
-  const b = !!ui.busy[kk(id, ck)], cur = V[k.value] || k.value || '—';
-  return `<button class="btn lvl" ${dat('next', id, k.key)} aria-label="${esc(`${k.label} : ${cur}. Passer à ${V[nx] || nx}`)}"${busyAttr(b)}><span>${b ? 'Envoi…' : esc(cur)}</span><span class=nx aria-hidden=true>→ ${esc(V[nx] || nx)}</span></button>${hint(kk(id, ck))}`;
+  const b = !!ui.busy[kk(id, ck)], cur = own(V, k.value) || k.value || '—';
+  return `<button class="btn lvl" ${dat('next', id, k.key)} aria-label="${esc(`${k.label} : ${cur}. Passer à ${own(V, nx) || nx}`)}"${busyAttr(b)}><span>${b ? 'Envoi…' : esc(cur)}</span><span class=nx aria-hidden=true>→ ${esc(own(V, nx) || nx)}</span></button>${hint(kk(id, ck))}`;
 }
 function seg(id, ck, cmd, lbl, opts, cur) {
   const b = !!ui.busy[kk(id, ck)];
   return `<div class=seg role=group aria-label="${esc(lbl)}">${opts.map(([v, l]) => `<button ${dat(cmd, id, v)} aria-pressed=${cur === v}${busyAttr(b)}>${esc(l)}</button>`).join('')}</div>${hint(kk(id, ck))}`;
 }
 const isLocked = st => st.panelLock === true || /^LOCK/.test(String(st.panelLock));
+const hasPanelLock = st => Object.hasOwn(st, 'panelLock') && st.panelLock != null; // clé absente => pas d'interrupteur
 const filter2 = st => SpaView.components(st).filter(k => k.type === 'FILTER')[1];
+const filter2Ok = st => { const f = filter2(st); return f && f.value !== 'DISABLED' ? f : null; }; // 2e filtre absent ou DISABLED => rien
 
 function alertsHtml(live, info, now) {
   const items = [];
@@ -297,7 +302,7 @@ function alertsHtml(live, info, now) {
   if (!items.length) return '<p class=ok>Aucune alerte : tout va bien.</p>';
   return '<ul class=alerts>' + items.map(({ id, a }) => `<li class="alert ${a.level}"><span class=badge aria-hidden=true></span><div>
     <strong>${a.level === 'critical' ? 'Critique' : 'Attention'} · <a href="${esc(href(id))}">${esc(label(id))}</a></strong><br>${esc(a.text)}<br>
-    ${ACTION[a.code] ? 'À faire : ' + esc(ACTION[a.code]) : 'À faire : ouvrir le détail du spa.'}</div></li>`).join('') + '</ul>';
+    ${own(ACTION, a.code) ? 'À faire : ' + esc(own(ACTION, a.code)) : 'À faire : ouvrir le détail du spa.'}</div></li>`).join('') + '</ul>';
 }
 
 function dashboard(live, info, all, now) {
@@ -305,7 +310,7 @@ function dashboard(live, info, all, now) {
   const cards = Object.entries(live).map(([id, { ts, state: x, c8z }]) => {
     const t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, c8z);
     const r = SpaStats.runtimes((own(all, id) || []).filter(v => v.ts > since), POLL_MS * 3);
-    const quick = SpaView.components(x, pumpLabels(id)).filter(k => (k.type === 'PUMP' || k.type === 'LIGHT') && SpaView.control(k.comp))
+    const quick = SpaView.components(x, pumpLabels(id)).filter(k => (k.type === 'PUMP' || k.type === 'LIGHT') && k.control)
       .map(k => `<div class=qrow><span>${esc(k.label)}</span>${compCtl(id, k)}</div>`).join('');
     return `<section class=card aria-label="${esc(label(id))}">
       <h3><a class=cardlink href="${esc(href(id))}" data-k="${esc(id)}">${esc(label(id))}</a></h3>${status(x.online)}
@@ -320,14 +325,16 @@ function dashboard(live, info, all, now) {
 }
 
 function tempCtl(id, t) {
-  const lo = t.rangeMode === 'LOW' ? t.range.lowMin : t.range.highMin, hi = t.rangeMode === 'LOW' ? t.range.lowMax : t.range.highMax;
-  const d = ui.draft[id], cur = d ?? t.set, k = kk(id, 'temp'), b = !!ui.busy[k];
+  const lo0 = t.rangeMode === 'LOW' ? t.rangeF.lowMin : t.rangeF.highMin, hi0 = t.rangeMode === 'LOW' ? t.rangeF.lowMax : t.rangeF.highMax;
+  const lo = lo0 == null ? null : Math.max(50, lo0), hi = hi0 == null ? null : Math.min(104, hi0);
+  const d = ui.draft[id], cur = d ?? t.setF, k = kk(id, 'temp'), b = !!ui.busy[k];
   if (cur == null) return '<p class=sub>Consigne inconnue.</p>';
-  return `<div class=stp><button class="btn round" ${dat('tdn', id)} aria-label="Baisser la consigne de 0,5 °C"${busyAttr(b || (lo != null && cur - .5 < lo - 1e-9))}>−</button>
-    <output aria-label="Consigne à appliquer">${esc(C(cur))}</output>
-    <button class="btn round" ${dat('tup', id)} aria-label="Monter la consigne de 0,5 °C"${busyAttr(b || (hi != null && cur + .5 > hi + 1e-9))}>+</button>
+  // La consigne avance de 1 °F entier (valeur réellement envoyée) ; le °C affiché est arrondi à 0,5 et peut sauter un demi-degré.
+  return `<div class=stp><button class="btn round" ${dat('tdn', id)} aria-label="Baisser la consigne de 1 °F"${busyAttr(b || (lo != null && cur - 1 < lo))}>−</button>
+    <output aria-label="Consigne à appliquer">${esc(C(SpaView.toC(cur)))} <small>(${cur} °F)</small></output>
+    <button class="btn round" ${dat('tup', id)} aria-label="Monter la consigne de 1 °F"${busyAttr(b || (hi != null && cur + 1 > hi))}>+</button>
     <button class=primary ${dat('tapply', id)}${busyAttr(b || d == null)}>${b ? 'Envoi…' : 'Appliquer'}</button></div>
-    <small>Plage ${esc((RANGE[t.rangeMode] || '').toLowerCase())} : ${esc(C(lo))} à ${esc(C(hi))}${d == null ? ' · modifiez la valeur puis appuyez sur Appliquer' : ''}</small>${hint(k)}`;
+    <small>Plage ${esc((own(RANGE, t.rangeMode) || '').toLowerCase())} : ${esc(C(SpaView.toC(lo)))} à ${esc(C(SpaView.toC(hi)))}${d == null ? ' · modifiez la valeur puis appuyez sur Appliquer' : ''}</small>${hint(k)}`;
 }
 
 function logGroup(id, kind, title, fixed, mapRow, local) {
@@ -351,9 +358,10 @@ function detail(id, live, info, all, now) {
   const dev = new Date(now).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const ev = es => es.map(e => row(esc(T(e.ts)), esc(e.msg))).join('') || row('<small>Aucun événement local</small>', '');
   const errs = tc.messages.map(m => row(esc(m.severity || 'Message'), esc(m.message))).join('');
-  const f2 = filter2(x), fc = ui.fc[id] || {}, filters = comps.filter(k => k.type === 'FILTER');
+  const f2 = filter2Ok(x), fc = ui.fc[id] || {}, filters = comps.filter(k => k.type === 'FILTER');
   const X = '<span class=badge-x>Expérimental, non vérifié</span>';
   const expGroup = !experimental() ? '' : group('Commandes expérimentales',
+    (f2 ? row(`Cycle de filtration 2<br>${X}`, sw(id, 'filter2', 'Cycle de filtration 2 (expérimental)', f2.on, 'filter2', null, 'Activé', 'Désactivé')) : '') +
     row(`Format de l'heure<br>${X}`, `<span class=hint style="text-align:right">Actuel : ${c.military ? '24 h' : '12 h'}</span>`) +
     `<div class="row blk"><div class=ctl>${seg(id, 'fmt', 'fmt', "Format de l'heure", [['12', '12 h'], ['24', '24 h']], c.military ? '24' : '12')}</div></div>` +
     `<div class="row blk"><strong>Cycle de filtration</strong> ${X}${filters.length ? `
@@ -369,21 +377,20 @@ function detail(id, live, info, all, now) {
     ${alerts.length ? alertsHtml(Object.fromEntries([[id, l]]), info, now) : ''}
     ${group('Température', row('Eau', `<b class=temp style="font-size:28px;margin:0">${esc(C(t.current))}</b>`) + row('Consigne', esc(C(t.set))) +
       `<div class=row style="display:block">${waterBar(t.current, t.set)}</div>` +
-      row('Plage active', val(RANGE[t.rangeMode] || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`) +
+      row('Plage active', val(own(RANGE, t.rangeMode) || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`) +
       `<div class="row blk"><strong>Nouvelle consigne</strong><div class=ctl>${tempCtl(id, t)}</div></div>`)}
-    ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(MODE_TXT[ht.mode] || 'Mode inconnu.')}</p></div>` +
+    ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(own(MODE_TXT, ht.mode) || 'Mode inconnu.')}</p></div>` +
       `<div class="row blk"><strong>Plage de température</strong><div class=ctl>${seg(id, 'range', 'range', 'Plage de température', [['HIGH', 'Haute'], ['LOW', 'Basse']], ht.range)}</div></div>` +
       row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('État c8z', val(ht.c8zState)) + row('Statut c8z', val(ht.c8zStatus)))}
     ${group('Pompes et lumières', comps.map(k => row(esc(k.label), compCtl(id, k) +
       `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
-    ${group('Panneau et filtration', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé')) +
-      (f2 ? row('Cycle de filtration 2', sw(id, 'filter2', 'Cycle de filtration 2', f2.on, 'filter2', null, 'Activé', 'Désactivé')) : ''))}
+    ${hasPanelLock(x) ? group('Panneau', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé'))) : ''}
     ${expGroup}
     ${group('Heure', row('Heure du spa', esc(c.text)) + row('Format', c.military ? '24 h' : '12 h') + row("Heure de l'appareil", esc(dev)) +
       row('Écart', c.driftMin == null ? '—' : SpaView.driftText(c.driftMin)))}
     ${c.drifted ? `<p class=note>Pas de correction automatique : réglez l'heure depuis le panneau du spa${experimental() ? ' ou avec la commande expérimentale ci-dessus.' : ', ou activez les commandes expérimentales (pied de page).'}</p>` : ''}
     ${group('Programmes (lecture seule)', scheds.map(s => row(`${esc(s.name)}${s.enabled ? '' : ' <small>(désactivé)</small>'}<br><small>${esc(s.time)} · ${esc(s.days.join(', '))}</small>`,
-      `${esc(C(SpaStats.toC(s.setTemp, x.celsius)))}<br>${val(s.heaterMode)}`)).join('') || row('Aucun programme relevé', ''))}
+      `${esc(C(SpaStats.toC(s.setTemp)))}<br>${val(s.heaterMode)}`)).join('') || row('Aucun programme relevé', ''))}
     ${group('Informations techniques', row('Numéro de série', val(tc.serial)) + row('Modèle', val(tc.model)) + row('Constructeur', val(tc.oem)) + row('Revendeur', val(tc.dealer)) +
       row('Firmware contrôleur', val(tc.firmware)) + row('Version passerelle', val(tc.gateway)) + row('Connectivité', x.online ? 'En ligne' : 'Hors ligne') +
       row('Dernier signal', p.lastSeen ? `${esc(T(p.lastSeen))} (${esc(ago(p.ageMin))})` : '—') + row('Date de vente', tc.salesDate ? D(tc.salesDate) : '—') + row("Date d'enregistrement", tc.registrationDate ? D(tc.registrationDate) : '—'))}
@@ -437,100 +444,142 @@ $('dlgok').onclick = () => { const r = ask.res; ask.res = null; r && r(true); };
 $('dlgno').onclick = () => $('dlg').close();
 $('dlg').onclose = () => { const r = ask.res; ask.res = null; r && r(false); safeRender(); };
 
-// Vérifie le spa puis renvoie son état courant ; null (et message) si on ne doit rien envoyer.
-function precheck(id) {
+// Contrôle sans effet : {st} (état courant exploitable) ou {err}. maxMs = âge maximal du dernier état connu (live[id].ts).
+function checkSpa(id, maxMs = STALE_MS) {
   const l = own(store('live'), id), g = SpaCmd.guard(l && l.state);
-  if (!g.ok) { toast(`Commande non envoyée : ${g.reason}.`, 'error'); return null; }
-  return l.state;
+  if (!g.ok) return { err: `Commande non envoyée : ${g.reason}.` };
+  const age = Date.now() - l.ts;
+  if (!(age <= maxMs)) return { err: maxMs === STALE_MS
+    ? `Données trop anciennes (dernier relevé il y a ${Number.isFinite(age) ? Math.max(1, Math.round(age / 60000)) : '?'} min), actualisez avant de commander.`
+    : `Données trop anciennes (dernier relevé il y a ${Number.isFinite(age) ? Math.round(age / 1000) : '?'} s) : l'heure renvoyée au spa serait périmée, actualisez avant de commander.` };
+  return { st: l.state };
+}
+// Vérifie le spa puis renvoie son état courant ; null (et message) si on ne doit rien envoyer.
+function precheck(id, maxMs) {
+  const c = checkSpa(id, maxMs);
+  if (c.err) { toast(c.err, 'error'); return null; }
+  return c.st;
 }
 // Après un envoi accepté : relire ce spa à ~2 s, ~6 s, ~10 s ; n'annoncer le succès que si l'état relu le confirme.
-function startConfirm(id, k, desc, expect, onOk) {
+function startConfirm(id, k, desc, expect, onOk, unreadable) {
   (ui.pend[k] || { timers: [] }).timers.forEach(clearTimeout);
   const p = ui.pend[k] = { text: 'En attente de confirmation du spa…', timers: [] };
   toast(`${desc} : envoyé. En attente de confirmation du spa…`, 'info'); safeRender();
   const check = async final => {
     try { await refreshSpa(id); } catch (e) { /* on réessaie au prochain palier */ }
     if (ui.pend[k] !== p) return;
-    const l = own(store('live'), id), done = (msg, kind) => { p.timers.forEach(clearTimeout); delete ui.pend[k]; toast(msg, kind); safeRender(); };
+    const l = own(store('live'), id), done = (msg, kind) => { p.timers.forEach(clearTimeout); delete ui.pend[k]; delete ui.lock[k]; toast(msg, kind); safeRender(); };
     if (l && expect(l.state)) { if (onOk) onOk(); done(`${desc} : confirmé par le spa.`, 'info'); }
-    else if (final) done(`${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`, 'warn');
+    else if (final) done(l && unreadable && unreadable(l.state) ? `${desc} : Non confirmable (heure du spa illisible). Vérifiez-la sur le panneau.` : `${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`, 'warn');
   };
   p.timers = [setTimeout(() => check(false), 2000), setTimeout(() => check(false), 6000), setTimeout(() => check(true), 10000)];
 }
 // build(state) -> {req, desc, expect?, onOk?}. Une commande à la fois par composant (ck).
-async function run(id, ck, build) {
+async function run(id, ck, build, maxMs) {
   const k = kk(id, ck); if (ui.busy[k]) return;
-  const st = precheck(id); if (!st) return;
+  const st = precheck(id, maxMs); if (!st) return;
+  const lockable = ck.startsWith('c:'); // commandes de composants : une seule à la fois par spa
+  if (lockable) { const o = spaLock(id); if (o) return toast(`Commande non envoyée : « ${o} » est en cours sur ce spa. Attendez sa confirmation.`, 'error'); }
   let b; try { b = build(st); } catch (e) { return toast(e.message, 'error'); }
   $('toasterr').textContent = '';
-  ui.busy[k] = 1; safeRender();
-  try { await command(b.req); } catch (e) { delete ui.busy[k]; toast(`${b.desc} : ${e.message}`, 'error'); safeRender(); return; }
+  ui.busy[k] = 1; if (lockable) ui.lock[k] = { id, what: b.desc }; safeRender();
+  try { await command(b.req); } catch (e) { delete ui.busy[k]; delete ui.lock[k]; toast(`${b.desc} : ${e.message}`, 'error'); safeRender(); return; }
   delete ui.busy[k];
-  if (b.expect) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk);
-  else { toast(`${b.desc} : envoyé. Ce réglage ne peut pas être relu ici : vérifiez-le sur le panneau du spa.`, 'warn'); safeRender(); }
+  if (b.expect) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk, b.unreadable);
+  else { delete ui.lock[k]; toast(`${b.desc} : envoyé. Ce réglage ne peut pas être relu ici : vérifiez-le sur le panneau du spa.`, 'warn'); safeRender(); }
 }
 const cmdComp = (s, id, key) => SpaView.components(s, pumpLabels(id)).find(x => x.key === key);
+// Plan « Tout éteindre » : requêtes (composants identifiables) + sautés (jamais de commande sur un composant douteux).
+function allOffPlan(id, st) {
+  const ents = SpaView.components(st, pumpLabels(id)), ent = c => ents.find(k => k.comp === c);
+  const r = SpaCmd.allOff(id, st, c => (ent(c) || {}).label || c.componentType), todo = [], skipped = r.skipped.slice();
+  for (const q of r.requests) { const e = ent(q.comp); if (!e || e.ambiguous) skipped.push({ label: e ? e.label : q.comp.componentType, reason: 'composant non identifiable' }); else todo.push({ c: e, req: q }); }
+  return { todo, skipped };
+}
+const skipTxt = sk => sk.map(x => `Non éteignable : ${x.label} (${x.reason})`);
+const busyMsg = o => `Commande non envoyée : « ${o} » est en cours sur ce spa. Attendez sa confirmation.`;
 async function allOff(id) {
-  const st = precheck(id), k = kk(id, 'alloff'); if (!st || ui.busy[k]) return;
-  const todo = SpaView.components(st, pumpLabels(id)).map(c => ({ c, req: SpaCmd.allOff(id, { components: [c.comp] })[0] })).filter(x => x.req);
-  if (!todo.length) return toast("Rien à éteindre : aucune pompe, lumière ou équipement de confort n'est allumé.", 'info');
-  if (!await ask({ title: 'Tout éteindre ?', text: `${label(id)} : ces équipements seront éteints. Filtration, circulation, ozone et chauffage ne sont pas touchés.`, items: todo.map(x => x.c.label), ok: 'Tout éteindre' })) return;
-  ui.busy[k] = 1; $('toasterr').textContent = ''; safeRender();
+  const k = kk(id, 'alloff'); if (ui.busy[k]) return;
+  const o = spaLock(id); if (o) return toast(busyMsg(o), 'error');
+  const st = precheck(id); if (!st) return;
+  const plan = allOffPlan(id, st), sk = skipTxt(plan.skipped);
+  if (!plan.todo.length) return sk.length ? toast(`Rien à éteindre automatiquement. ${sk.join(' ; ')}`, 'warn') : toast("Rien à éteindre : aucune pompe, lumière ou équipement de confort n'est allumé.", 'info');
+  const shown = new Set(plan.todo.map(x => x.c.key));
+  if (!await ask({ title: 'Tout éteindre ?', text: `${label(id)} : ces équipements seront éteints. Filtration, circulation, ozone et chauffage ne sont pas touchés.`, items: plan.todo.map(x => x.c.label).concat(sk), ok: 'Tout éteindre' })) return;
+  // Après la confirmation : la fenêtre a pu rester ouverte longtemps, on revérifie tout avant d'envoyer.
+  const stop = (msg, kind = 'error') => { $('dlg').close(); toast(msg, kind); };
+  const o2 = spaLock(id); if (o2) return stop(busyMsg(o2));
+  const c2 = checkSpa(id); if (c2.err) return stop(c2.err);
+  const p2 = allOffPlan(id, c2.st), todo = p2.todo;
+  if (todo.some(x => !shown.has(x.c.key))) return stop("L'état du spa a changé pendant la confirmation : relancez « Tout éteindre ».");
+  if (!todo.length) return stop('Plus rien à éteindre : le spa a changé entre-temps.', 'info');
+  ui.busy[k] = 1; ui.lock[k] = { id, what: 'Tout éteindre' }; $('toasterr').textContent = ''; safeRender();
+  $('dlgl').innerHTML = todo.map(x => `<li>${esc(x.c.label)}</li>`).concat(skipTxt(p2.skipped).map(t => `<li>${esc(t)}</li>`)).join('');
   $('dlgok').hidden = true; $('dlgno').disabled = true; $('dlgno').textContent = 'Envoi…';
   const li = [...$('dlgl').children], sent = [], failed = [];
-  for (let i = 0; i < todo.length; i++) { // en séquence, un résultat par composant
-    li[i].textContent = `${todo[i].c.label} : envoi…`;
-    try { await command(todo[i].req); li[i].textContent = `${todo[i].c.label} : envoyé`; sent.push(todo[i].c.key); }
-    catch (e) { li[i].textContent = `${todo[i].c.label} : échec (${e.message})`; failed.push(`${todo[i].c.label} (${e.message})`); }
+  for (let n = 0; n < todo.length; n++) { // en séquence, un résultat par composant
+    li[n].textContent = `${todo[n].c.label} : envoi…`;
+    try { await command(todo[n].req); li[n].textContent = `${todo[n].c.label} : envoyé`; sent.push(todo[n].c.key); }
+    catch (e) { li[n].textContent = `${todo[n].c.label} : échec (${e.message})`; failed.push(`${todo[n].c.label} (${e.message})`); }
   }
   delete ui.busy[k]; $('dlgno').disabled = false; $('dlgno').textContent = 'Fermer'; $('dlgno').focus();
   if (sent.length) startConfirm(id, k, 'Tout éteindre', s => sent.every(key => { const c = SpaView.components(s).find(x => x.key === key); return c && !c.on; }));
-  else safeRender();
+  else { delete ui.lock[k]; safeRender(); }
   if (failed.length) toast(`Tout éteindre : ${failed.length} échec(s) : ${failed.join(' ; ')}`, 'error');
 }
 const expConfirm = (what, detailTxt) => ask({ title: 'Commande expérimentale', text: `${what} Cette commande n'a jamais été vérifiée sur un vrai spa. ${detailTxt || ''}`, items: [], ok: 'Envoyer' }).then(ok => { if (ok) $('dlg').close(); return ok; });
 
+// Les commandes expérimentales revérifient le réglage au moment d'envoyer (le bouton a pu rester affiché).
+const expOn = () => experimental() || (toast('Commande expérimentale désactivée : activez-la en pied de page.', 'error'), false);
 async function doCmd(d) {
   const id = d.id;
   switch (d.cmd) {
     case 'comp': case 'next': return run(id, 'c:' + d.key, s => {
       const k = cmdComp(s, id, d.key); if (!k) throw new Error('Composant introuvable.');
-      const c = SpaView.control(k.comp), to = d.cmd === 'next' ? SpaCmd.nextState(k.comp) : k.on ? 'OFF' : c && c.onValue;
+      if (!k.control) throw new Error(`${k.label} : commande indisponible (composant non identifiable ou sans état Éteint).`);
+      const c = k.control, to = d.cmd === 'next' ? SpaCmd.nextState(k.comp) : k.on ? 'OFF' : c.onValue;
       const req = SpaCmd.component(id, k.comp, to);
-      return { req, desc: `${k.label} → ${V[to] || to}`, expect: n => { const m = cmdComp(n, id, d.key); return !!m && m.value === req.body.state; } };
+      return { req, desc: `${k.label} → ${own(V, to) || to}`, expect: n => { const m = cmdComp(n, id, d.key); return !!m && m.value === req.body.state; } };
     });
-    case 'tdn': case 'tup': { const l = own(store('live'), id); if (!l) return; const t = SpaView.temps(l.state); const cur = ui.draft[id] ?? t.set; if (cur == null) return; ui.draft[id] = cur + (d.cmd === 'tup' ? .5 : -.5); return safeRender(); }
+    case 'tdn': case 'tup': { const l = own(store('live'), id); if (!l) return; const t = SpaView.temps(l.state); const cur = ui.draft[id] ?? t.setF; if (cur == null) return; ui.draft[id] = cur + (d.cmd === 'tup' ? 1 : -1); return safeRender(); }
     case 'tapply': return run(id, 'temp', s => {
-      const c = ui.draft[id], req = SpaCmd.temperature(id, c, s);
-      return { req, desc: `Consigne ${C(c)}`, expect: n => { const v = SpaView.temps(n).set; return v != null && Math.abs(v - c) < .15; }, onOk: () => { delete ui.draft[id]; } };
+      const f = ui.draft[id], req = SpaCmd.temperatureF(id, f, s);
+      return { req, desc: `Consigne ${C(SpaView.toC(f))} (${f} °F)`, expect: n => Math.round(Number(n.desiredTemp)) === req.body.value, onOk: () => { delete ui.draft[id]; } };
     });
     case 'mode': case 'range': {
       const l = own(store('live'), id); if (l && (d.cmd === 'mode' ? l.state.heaterMode : l.state.tempRange) === d.key) return;
       return run(id, d.cmd, s => {
         const req = d.cmd === 'mode' ? SpaCmd.heaterMode(id, d.key) : SpaCmd.range(id, d.key);
-        return { req, desc: d.cmd === 'mode' ? `Mode ${(MODES.find(m => m[0] === d.key) || [, d.key])[1]}` : `Plage ${RANGE[d.key]}`, expect: n => (d.cmd === 'mode' ? n.heaterMode : n.tempRange) === d.key };
+        return { req, desc: d.cmd === 'mode' ? `Mode ${(MODES.find(m => m[0] === d.key) || [, d.key])[1]}` : `Plage ${own(RANGE, d.key) || d.key}`, expect: n => (d.cmd === 'mode' ? n.heaterMode : n.tempRange) === d.key };
       });
     }
-    case 'panel': return run(id, 'panel', s => { const to = !isLocked(s); return { req: SpaCmd.panel(id, to), desc: to ? 'Verrouillage du panneau' : 'Déverrouillage du panneau', expect: n => isLocked(n) === to }; });
-    case 'filter2': return run(id, 'filter2', s => { const f = filter2(s); if (!f) throw new Error('Cycle de filtration 2 absent.'); const to = !f.on; return { req: SpaCmd.filter2(id, to), desc: `Cycle de filtration 2 ${to ? 'activé' : 'désactivé'}`, expect: n => { const m = filter2(n); return !!m && m.on === to; } }; });
+    case 'panel': return run(id, 'panel', s => { if (!hasPanelLock(s)) throw new Error('Verrouillage du panneau indisponible : le spa ne le signale pas.'); const to = !isLocked(s); return { req: SpaCmd.panel(id, to), desc: to ? 'Verrouillage du panneau' : 'Déverrouillage du panneau', expect: n => isLocked(n) === to }; });
+    case 'filter2': {
+      if (!expOn()) return;
+      if (!await expConfirm("Activer ou désactiver le cycle de filtration 2 ?", "La relecture de son état (2e filtre actif ou non) est une hypothèse.")) return;
+      return run(id, 'filter2', s => { const f = filter2Ok(s); if (!f) throw new Error('Cycle de filtration 2 absent ou désactivé.'); const to = !f.on; return { req: SpaCmd.filter2(id, to), desc: `Cycle de filtration 2 ${to ? 'activé' : 'désactivé'}`, expect: n => { const m = filter2(n); return !!m && m.on === to; } }; });
+    }
     case 'alloff': return allOff(id);
     case 'more': return loadLog(id, d.key, true);
     case 'fmt': {
-      const l = own(store('live'), id); if (!l || !precheck(id)) return; const mil = d.key === '24'; if (!!l.state.military === mil) return;
+      if (!expOn()) return;
+      const l = own(store('live'), id); if (!l || !precheck(id, CLOCK_MS)) return; const mil = d.key === '24'; if (!!l.state.military === mil) return;
       if (!await expConfirm(`Passer l'affichage de l'heure du spa en ${d.key} h ?`, "L'heure actuelle du spa est renvoyée telle quelle.")) return;
-      return run(id, 'fmt', s => ({ req: SpaCmd.timeFormat(id, s, mil), desc: `Format ${d.key} h`, expect: n => !!n.military === mil }));
+      return run(id, 'fmt', s => ({ req: SpaCmd.timeFormat(id, s, mil), desc: `Format ${d.key} h`, expect: n => !!n.military === mil }), CLOCK_MS); // l'heure renvoyée vient de l'état connu : recontrôlé après la confirmation
     }
     case 'fcycle': {
-      if (!precheck(id)) return; const fc = ui.fc[id] || {};
+      if (!expOn() || !precheck(id)) return; const fc = ui.fc[id] || {};
       const hrs = Number(String(fc.hours || '').replace(',', '.') || NaN);
       try { SpaCmd.filterCycle(id, SpaView.components(own(store('live'), id).state, pumpLabels(id)).filter(k => k.type === 'FILTER')[Number(fc.idx) || 0].comp, fc.start || '', hrs); } catch (e) { return toast(e.message, 'error'); }
       if (!await expConfirm(`Régler le cycle de filtration : début ${fc.start}, durée ${fc.hours} h ?`, "La conversion de la durée est une hypothèse.")) return;
       return run(id, 'fcycle', s => ({ req: SpaCmd.filterCycle(id, SpaView.components(s, pumpLabels(id)).filter(k => k.type === 'FILTER')[Number(fc.idx) || 0].comp, fc.start || '', hrs), desc: 'Cycle de filtration' }));
     }
     case 'settime': {
-      if (!precheck(id)) return; const n = new Date();
+      if (!expOn() || !precheck(id, CLOCK_MS)) return; const n = new Date();
       if (!await expConfirm(`Régler l'heure du spa sur ${n.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}, l'heure de cet appareil ?`, "Le format 12/24 h actuel est conservé.")) return;
-      return run(id, 'time', s => { const now = new Date(); return { req: SpaCmd.timeFormat(id, { hour: now.getHours(), minute: now.getMinutes() }, !!s.military), desc: "Heure du spa", expect: nw => !SpaView.clock(nw, Date.now()).drifted }; });
+      if (!expOn()) return;
+      return run(id, 'time', s => { const now = new Date(); return { req: SpaCmd.timeFormat(id, { hour: now.getHours(), minute: now.getMinutes() }, !!s.military), desc: "Heure du spa",
+        expect: nw => { const c = SpaView.clock(nw, Date.now()); return typeof c.driftMin === 'number' && !c.drifted; }, unreadable: nw => typeof SpaView.clock(nw, Date.now()).driftMin !== 'number' }; }, CLOCK_MS);
     }
   }
 }

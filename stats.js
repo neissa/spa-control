@@ -3,10 +3,12 @@
 var SpaStats = (function () {
   var ACTIVE = ['PUMP', 'CIRCULATION_PUMP', 'FILTER'], ON = ['ON', 'HIGH', 'LOW', 'MEDIUM'];
 
-  // L'API renvoie l'unité du boîtier (state.celsius=false => °F). On garde des °C; 0 = pas de mesure.
-  function toC(v, celsius) {
-    v = Number(v); if (!v) return null;
-    return Math.round((celsius ? v : (v - 32) * 5 / 9) * 10) / 10;
+  // Toutes les températures de l'état sont en °F, quel que soit state.celsius (échelle d'affichage du panneau seulement).
+  // °F arrondi à l'entier, converti, puis °C arrondi à 0,5 (51 °F => 10,5 ; 55 => 13,0).
+  // null si 0/absent ou hors plage plausible (32-140 °F = 0-60 °C : « 262.00 » = sonde non lue).
+  function toC(v) {
+    v = Math.round(Number(v)); if (!v || v < 32 || v > 140) return null;
+    return Math.round((v - 32) * 5 / 9 * 2) / 2;
   }
 
   // Réduit un état brut à ce qu'on stocke (localStorage ~5 Mo)
@@ -16,7 +18,7 @@ var SpaStats = (function () {
       online: !!state.online,
       running: (state.components || []).some(function (c) { return ACTIVE.indexOf(c.componentType) >= 0 && ON.indexOf(c.value) >= 0; }),
       heating: !!(c8z && c8z.c8zHeaterState && c8z.c8zHeaterState !== 'OFF'),
-      temp: toC(state.currentTemp, state.celsius), set: toC(state.desiredTemp, state.celsius), err: state.errorCode
+      temp: toC(state.currentTemp), set: toC(state.desiredTemp), err: state.errorCode
     };
   }
 

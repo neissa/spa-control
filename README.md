@@ -17,7 +17,7 @@ Seuls les jetons sont gardés dans localStorage, pas le mot de passe.
 
 ## Contenu
 - Tableau de bord : alertes (dernier ping > 1 h, hors ligne, erreur, horloge à corriger), températures, heure interne du spa, interrupteurs pompes et lumière par spa, « Tout éteindre » (confirmation, résultat par équipement ; filtration, circulation, ozone et chauffage ne sont jamais touchés).
-- Détail par spa : pompes, lumières et autres équipements (interrupteur ou bouton à niveaux, noms personnalisables), consigne (± 0,5 °C puis Appliquer), mode de chauffe (Prêt / Repos / Prêt en repos), plage Haute / Basse, verrouillage du panneau, cycle de filtration 2, heure et format, programmes, informations techniques, journaux d'erreurs et d'événements du serveur (20 par page, « Charger plus » ; lecture seule, non stockés) avec le relevé local en dessous.
+- Détail par spa : pompes, lumières et autres équipements (interrupteur ou bouton à niveaux, noms personnalisables), consigne (± 1 °F entier, affichée en °C arrondis à 0,5, puis Appliquer), mode de chauffe (Prêt / Repos / Prêt en repos), plage Haute / Basse, verrouillage du panneau, cycle de filtration 2, heure et format, programmes, informations techniques, journaux d'erreurs et d'événements du serveur (20 par page, « Charger plus » ; lecture seule, non stockés) avec le relevé local en dessous.
 - Pied de page, **Commandes expérimentales** (désactivées par défaut) : format 12/24 h, cycle de filtration, réglage manuel de l'heure du spa sur celle de l'appareil. Étiquetées « Expérimental, non vérifié », chacune derrière une confirmation. Aucune correction d'heure automatique.
 
 `node --test` : tests des calculs de durées (`stats.js`), de la logique de lecture (`spa.js`) et des constructeurs de commandes (`commands.js`).
