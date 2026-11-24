@@ -35,6 +35,9 @@ const API = 'https://iot.controlmyspa.com/web', POLL_MS = 60000, KEEP_MS = 14 * 
 const $ = id => document.getElementById(id);
 const store = (k, v) => v === undefined ? JSON.parse(localStorage.getItem('spa.' + k) || 'null') : localStorage.setItem('spa.' + k, JSON.stringify(v));
 
+// Nom affiché : celui choisi par l'utilisateur, sinon modèle + série
+const label = id => (store('labels') || {})[id] || (store('names') || {})[id] || id;
+
 // ---- API ----
 // shortcut: corps/réponse de /auth/login et /auth/refresh supposés ({email,password} / {refreshToken} -> {data:{accessToken,refreshToken}}); à confirmer au premier essai.
 async function post(path, body) {
@@ -66,8 +69,9 @@ async function poll() {
       const state = await get(`/spas/${s._id}/current-state`);
       const c8z = await get(`/spas/${s._id}/current-c8z`).catch(() => null);
       const x = SpaStats.compact(state, c8z, now), prev = (all[s._id] || []).at(-1);
-      if (prev && prev.online !== x.online) log(names[s._id], x.online ? 'de nouveau en ligne' : 'HORS LIGNE');
-      if (prev && prev.err !== x.err) log(names[s._id], `code erreur ${prev.err} -> ${x.err}`);
+      store('names', names);
+      if (prev && prev.online !== x.online) log(label(s._id), x.online ? 'de nouveau en ligne' : 'HORS LIGNE');
+      if (prev && prev.err !== x.err) log(label(s._id), `code erreur ${prev.err} -> ${x.err}`);
       all[s._id] = [...(all[s._id] || []), x].filter(v => v.ts > now - KEEP_MS);
       live[s._id] = { ts: now, state, c8z };
     }
@@ -86,16 +90,18 @@ const h = s => Math.floor(s / 3600) + ' h ' + Math.round(s % 3600 / 60) + ' min'
 const T = ts => new Date(ts).toLocaleString('fr-FR');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
 function render() {
-  const names = store('names') || {}, live = store('live') || {}, all = store('samples') || {};
-  $('spas').innerHTML = Object.entries(live).map(([id, { ts, state: x, c8z }]) => `<div class=card><h2>${esc(names[id])}</h2>
+  const live = store('live') || {}, all = store('samples') || {};
+  const deg = (v, celsius) => { const c = SpaStats.toC(v, celsius); return c === null ? '—' : c.toFixed(1) + ' °C'; };
+  $('spas').innerHTML = Object.entries(live).map(([id, { ts, state: x, c8z }]) => `<div class=card>
+    <h2>${esc(label(id))} <button class=rename data-id="${esc(id)}" title="Renommer">✎</button></h2>
     <div class=${x.online ? 'on' : 'off'}>${x.online ? 'En ligne' : 'HORS LIGNE'}</div>
-    <p>Eau ${esc(x.currentTemp)}° · consigne ${esc(x.desiredTemp)}° · ${esc(x.heaterMode)} · chauffe ${esc(c8z?.c8zHeaterState)}</p>
+    <p>Eau ${deg(x.currentTemp, x.celsius)} · consigne ${deg(x.desiredTemp, x.celsius)} · ${esc(x.heaterMode)} · chauffe ${esc(c8z?.c8zHeaterState)}</p>
     <p>${(x.components || []).filter(c => c.value).map(c => esc(c.componentType + ': ' + c.value)).join(' · ')}</p>
     <small>relevé ${T(ts)} · plage ${esc(x.tempRange)}, éco ${esc(x.ecoMode)}, filtration 2 ${esc(x.secondaryFiltrationMode)}</small></div>`).join('');
   const since = Date.now() - 7 * 864e5;
   $('stats').innerHTML = '<table>' + Object.entries(all).map(([id, a]) => {
     const r = SpaStats.runtimes(a.filter(v => v.ts > since), POLL_MS * 3);
-    return `<tr><td>${esc(names[id])}</td><td>pompes ${h(r.runningS)}</td><td>avec chauffe ${h(r.heatingS)}</td><td>sans chauffe ${h(r.runningNoHeatS)}</td><td>hors ligne ${h(r.offlineS)}</td></tr>`;
+    return `<tr><td>${esc(label(id))}</td><td>pompes ${h(r.runningS)}</td><td>avec chauffe ${h(r.heatingS)}</td><td>sans chauffe ${h(r.runningNoHeatS)}</td><td>hors ligne ${h(r.offlineS)}</td></tr>`;
   }).join('') + '</table>';
   $('events').innerHTML = (store('events') || []).map(e => `<tr><td>${T(e.ts)}</td><td>${esc(e.spa)}</td><td>${esc(e.msg)}</td></tr>`).join('') || '<tr><td>Aucun événement</td></tr>';
   document.title = (Object.values(live).some(l => !l.state.online) ? '⚠ HORS LIGNE – ' : '') + 'Spa';
@@ -111,6 +117,13 @@ $('login').onsubmit = async e => {
   e.preventDefault();
   try { await post('/auth/login', { email: $('email').value, password: $('pwd').value }); $('pwd').value = ''; show(true); }
   catch (er) { $('err').textContent = er.message; }
+};
+$('spas').onclick = e => {
+  const id = e.target.dataset.id; if (!id) return;
+  const n = prompt('Nom de ce spa (vide = nom par défaut)', label(id));
+  if (n === null) return;
+  const l = store('labels') || {}; n.trim() ? l[id] = n.trim() : delete l[id];
+  store('labels', l); render();
 };
 $('logout').onclick = () => { localStorage.removeItem('spa.tokens'); show(false); };
 $('notif').onclick = () => window.Notification && Notification.requestPermission();

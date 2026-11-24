@@ -3,6 +3,12 @@
 var SpaStats = (function () {
   var ACTIVE = ['PUMP', 'CIRCULATION_PUMP', 'FILTER'], ON = ['ON', 'HIGH', 'LOW', 'MEDIUM'];
 
+  // L'API renvoie l'unité du boîtier (state.celsius=false => °F). On garde des °C; 0 = pas de mesure.
+  function toC(v, celsius) {
+    v = Number(v); if (!v) return null;
+    return Math.round((celsius ? v : (v - 32) * 5 / 9) * 10) / 10;
+  }
+
   // Réduit un état brut à ce qu'on stocke (localStorage ~5 Mo)
   function compact(state, c8z, ts) {
     return {
@@ -10,7 +16,7 @@ var SpaStats = (function () {
       online: !!state.online,
       running: (state.components || []).some(function (c) { return ACTIVE.indexOf(c.componentType) >= 0 && ON.indexOf(c.value) >= 0; }),
       heating: !!(c8z && c8z.c8zHeaterState && c8z.c8zHeaterState !== 'OFF'),
-      temp: Number(state.currentTemp), set: Number(state.desiredTemp), err: state.errorCode
+      temp: toC(state.currentTemp, state.celsius), set: toC(state.desiredTemp, state.celsius), err: state.errorCode
     };
   }
 
@@ -27,6 +33,6 @@ var SpaStats = (function () {
     }
     return r;
   }
-  return { compact: compact, runtimes: runtimes };
+  return { compact: compact, runtimes: runtimes, toC: toC };
 })();
 if (typeof module !== 'undefined') module.exports = SpaStats;

@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { compact, runtimes } = require('./stats.js');
+const { compact, runtimes, toC } = require('./stats.js');
+
+test("convertit en °C selon l'unité du boîtier", () => {
+  assert.equal(toC('50.90', false), 10.5);
+  assert.equal(toC('38.00', true), 38);
+  assert.equal(toC('0.00', false), null);
+});
 
 const st = (ts, online, pump, heat) => compact({ online, components: [{ componentType: 'PUMP', value: pump }] }, { c8zHeaterState: heat }, ts);
 
