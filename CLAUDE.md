@@ -14,6 +14,9 @@ Page web 100 % navigateur (index.html + stats.js, localStorage) qui remplace le 
 3. Lancer `node --test` et vérifier le résultat réel (syntaxe de index.html, comportement attendu) avant de déclarer que c'est fini.
 4. Fusionner le worktree dans la branche seulement si tout est vert, puis demander avant de pousser.
 
+## Interface (UI/UX)
+Tout travail d'interface passe par le skill `apple-design` (HIG d'Apple) : le charger avant de dessiner ou modifier une page, lire ses références (accessibility, layout, typography, color, designing-for-ios) et citer les pages utilisées. Les agents qui écrivent de l'UI reçoivent la même consigne et le chemin `C:\Users\A\.claude\skills\apple-design\references\hig`.
+
 ## Routage des modèles
 Choisir le modèle le moins cher qui fait correctement la tâche. Passer au niveau supérieur seulement si le résultat est faux ou ambigu.
 
