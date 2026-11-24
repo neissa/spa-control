@@ -142,6 +142,13 @@ var SpaView = (function () {
     return out;
   }
 
-  return { toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
+  // Texte du journal pour un changement de code d'erreur, ou null. 0 <-> 38 (pas de filtration) n'est pas une panne : rien à journaliser.
+  function errorChange(prev, next) {
+    var a = Number(prev) || 0, b = Number(next) || 0;
+    if (a === b || (a + b === 38 && (a === 0 || b === 0))) return null;
+    return 'code erreur ' + a + ' -> ' + b;
+  }
+
+  return { errorChange: errorChange, toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;

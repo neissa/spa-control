@@ -190,3 +190,12 @@ test('outcome: confirmé, autre niveau, inchangé', () => {
   for (const bad of [null, undefined, '']) { assert.equal(V.outcome('OFF', bad, 'HIGH').status, 'unchanged'); assert.equal(V.outcome(bad, 'HIGH', 'LOW').status, 'changed'); }
   assert.equal(V.outcome(null, null, null).status, 'unchanged');
 });
+
+test('errorChange: 0<->38 silencieux, autres changements journalisés', () => {
+  for (const [a, b] of [[0, 0], [38, 38], [12, 12], [null, 0], [undefined, null], ['38', 38], [0, 38], [38, 0], [null, 38], [38, undefined], ['0', '38']]) assert.equal(V.errorChange(a, b), null, `${a}->${b}`);
+  assert.equal(V.errorChange(0, 12), 'code erreur 0 -> 12');
+  assert.equal(V.errorChange(12, 0), 'code erreur 12 -> 0');
+  assert.equal(V.errorChange(12, 38), 'code erreur 12 -> 38');
+  assert.equal(V.errorChange(38, 12), 'code erreur 38 -> 12');
+  assert.equal(V.errorChange(null, 12), 'code erreur 0 -> 12');
+});

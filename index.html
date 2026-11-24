@@ -197,7 +197,7 @@ async function poll() {
         const x = SpaStats.compact(state, c8z, now), old = own(all, id) || [], prev = old.at(-1);
         store('names', names);
         if (prev && prev.online !== x.online) log(label(id), x.online ? 'de nouveau en ligne' : 'HORS LIGNE', id);
-        if (prev && prev.err !== x.err) log(label(id), `code erreur ${prev.err} -> ${x.err}`, id);
+        const ec = prev && SpaView.errorChange(prev.err, x.err); if (ec) log(label(id), ec, id);
         all[id] = [...old, x].filter(v => v.ts > now - KEEP_MS);
         live[id] = { ts: now, state, c8z };
       } catch (e) {
