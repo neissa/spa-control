@@ -1,0 +1,11 @@
+{
+  "name": "spa-control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node --env-file=.env server.js",
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spa</title>
+<style>
+  body{font:16px system-ui;max-width:760px;margin:1rem auto;padding:0 1rem;background:#111;color:#eee}
+  .card{background:#1c1c1c;border-radius:8px;padding:1rem;margin:1rem 0} h2{margin:.2rem 0}
+  .off{color:#f66;font-weight:bold} .on{color:#6c6} table{border-collapse:collapse;width:100%} td{padding:.2rem .5rem;border-top:1px solid #333}
+</style>
+<h1>Spa</h1><div id=spas></div>
+<div class=card><h2>Durées (7 jours)</h2><div id=stats></div></div>
+<div class=card><h2>Journal</h2><table id=events></table></div>
+<script>
+const h = s => Math.floor(s/3600) + ' h ' + Math.round(s%3600/60) + ' min';
+const T = ts => new Date(ts).toLocaleString('fr-FR');
+async function load(){
+  const [spas, stats, events] = await Promise.all(['spas','stats','events'].map(p => fetch('/api/'+p).then(r => r.json())));
+  const name = {}; spas.forEach(s => name[s.id] = s.model + ' ' + s.serial);
+  document.getElementById('spas').innerHTML = spas.map(s => { const x = s.state || {};
+    return `<div class=card><h2>${name[s.id]}</h2>
+      <div class=${x.online?'on':'off'}>${x.online?'En ligne':'HORS LIGNE'}</div>
+      <p>Eau ${x.currentTemp}° · consigne ${x.desiredTemp}° · ${x.heaterMode} · chauffe ${s.c8z?.c8zHeaterState}</p>
+      <p>${(x.components||[]).filter(c=>c.value).map(c=>c.componentType+': '+c.value).join(' · ')}</p>
+      <small>relevé ${s.ts?T(s.ts):'—'} · réglages: plage ${x.tempRange}, éco ${x.ecoMode}, filtration 2 ${x.secondaryFiltrationMode}</small></div>`; }).join('');
+  document.getElementById('stats').innerHTML = '<table>' + Object.entries(stats).map(([id, r]) =>
+    `<tr><td>${name[id]}</td><td>pompes ${h(r.runningS)}</td><td>dont avec chauffe ${h(r.heatingS)}</td><td>sans chauffe ${h(r.runningNoHeatS)}</td><td>hors ligne ${h(r.offlineS)}</td></tr>`).join('') + '</table>';
+  document.getElementById('events').innerHTML = events.map(e => `<tr><td>${T(e.ts)}</td><td>${name[e.spa]||e.spa}</td><td>${e.msg}</td></tr>`).join('') || '<tr><td>Aucun événement</td></tr>';
+}
+load(); setInterval(load, 30000);
+</script>
