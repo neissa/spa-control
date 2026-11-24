@@ -1,16 +1,17 @@
 # spa-control
 
-Remplacement léger du portail Control My Spa (Balboa) : état en direct, journal, alerte hors ligne, temps de fonctionnement avec/sans chauffe.
+Remplacement léger du portail Control My Spa (Balboa), 100 % navigateur : HTML + JS + localStorage, sans serveur ni dépendance.
 
-Utilise l'API non officielle `iot.controlmyspa.com/web` (peut changer sans prévenir). Aucune dépendance, Node >= 22.5.
+Il appelle l'API non officielle `iot.controlmyspa.com/web` (CORS ouvert, peut changer sans prévenir). Il affiche l'état, tient un journal, signale quand le spa passe hors ligne (titre de l'onglet + notification) et calcule les temps de pompes avec/sans chauffe.
 
-## Lancer
-1. Copier `.env.example` en `.env` et renseigner `CMS_EMAIL` / `CMS_PASSWORD` (jamais commité).
-2. `npm start` puis ouvrir http://127.0.0.1:3000
+## Utiliser
+Ouvrir `index.html` (double-clic, ou GitHub Pages), se connecter avec le compte Control My Spa.
+Seuls les jetons sont gardés dans localStorage, pas le mot de passe.
 
-Un relevé est stocké dans `data/spa.db` (SQLite) toutes les `POLL_SECONDS`. L'API ne fournit pas d'historique : les stats ne couvrent que la période où le serveur tourne.
+## Limites
+- Les relevés (1/min) ne se font que **page ouverte** : l'alerte hors ligne et les stats ne couvrent que ces périodes.
+- Historique gardé 14 jours (localStorage ~5 Mo).
+- Commandes (pompes, lumières, consigne) pas encore faites : appels non relevés.
+- Format du login/refresh et définition de « chauffe » à vérifier au premier essai.
 
-## Pas encore fait
-- Commandes (pompes, lumières, consigne) : appels non relevés.
-- Format exact de la réponse de login et définition de « chauffe » à vérifier au premier lancement.
-- Pas d'authentification sur la page : écoute en local uniquement par défaut.
+`npm test` : test des calculs de durées.

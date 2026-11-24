@@ -1,22 +1,17 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { runtimes } from './stats.js';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { compact, runtimes } = require('./stats.js');
 
-const st = (online, pump, heat) => ({ ts: 0, state: { online, components: [{ componentType: 'PUMP', value: pump }] }, c8z: { c8zHeaterState: heat } });
-const at = (s, ms) => ({ ...s, ts: ms });
+const st = (ts, online, pump, heat) => compact({ online, components: [{ componentType: 'PUMP', value: pump }] }, { c8zHeaterState: heat }, ts);
 
 test('répartit les temps avec/sans chauffe et ignore les trous', () => {
   const m = 60000;
   const r = runtimes([
-    at(st(true, 'HIGH', 'OFF'), 0),      // 1 min pompe sans chauffe
-    at(st(true, 'HIGH', 'ON'), m),       // 1 min pompe + chauffe
-    at(st(false, 'OFF', 'OFF'), 2 * m),  // 1 min hors ligne
-    at(st(true, 'OFF', 'OFF'), 3 * m),   // trou de 1h -> ignoré
-    at(st(true, 'OFF', 'OFF'), 3 * m + 3600000),
+    st(0, true, 'HIGH', 'OFF'),      // 1 min pompe sans chauffe
+    st(m, true, 'HIGH', 'ON'),       // 1 min pompe + chauffe
+    st(2 * m, false, 'OFF', 'OFF'),  // 1 min hors ligne
+    st(3 * m, true, 'OFF', 'OFF'),   // trou de 1h -> ignoré
+    st(3 * m + 3600000, true, 'OFF', 'OFF'),
   ], 5 * m);
-  assert.equal(r.runningS, 120);
-  assert.equal(r.heatingS, 60);
-  assert.equal(r.runningNoHeatS, 60);
-  assert.equal(r.offlineS, 60);
-  assert.equal(r.onlineS, 120);
+  assert.deepEqual([r.runningS, r.heatingS, r.runningNoHeatS, r.offlineS, r.onlineS], [120, 60, 60, 60, 120]);
 });
