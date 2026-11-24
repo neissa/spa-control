@@ -6,7 +6,8 @@ Page web 100 % navigateur (index.html + stats.js, localStorage) qui remplace le 
 - Ne jamais lire, afficher ni committer `.env`, mots de passe ou jetons (le dépôt est public).
 - Pas de dépendance ni de build : garder index.html + stats.js. `node --test` doit passer.
 - Ne pas envoyer de commande d'écriture au spa (pompes, lumières, consigne) sans accord explicite de l'utilisateur.
-- Commits et push seulement sur demande.
+- L'utilisateur a demandé de ne plus poser de questions de confirmation (« ne me demande plus, avance », 24/11/2026) : commiter et pousser la branche `feat/web-statique` sans demander, une fois tests et vérifications au vert. Jamais de push sur `main`, jamais de force push, aucune pull request sans demande.
+- Essais sur le vrai spa 57547-012603100009 : seulement réversibles, un équipement à la fois, état de départ rétabli et relevé ; jamais pendant que le spa semble utilisé (équipements allumés par quelqu'un d'autre) ; vérifier l'origine de l'onglet (https://controlmyspa.com) avant tout POST.
 
 ## Méthode de travail
 1. Avant toute action : écrire un plan court.
