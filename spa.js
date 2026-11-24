@@ -139,7 +139,7 @@ var SpaView = (function () {
     return objs(state && state.components).filter(function (c) { return c.componentType === 'FILTER'; }).map(function (c, i) {
       var disabled = c.value === 'DISABLED', ok = !disabled && Number.isInteger(c.hour) && Number.isInteger(c.minute);
       return {
-        index: i + 1, label: 'Cycle ' + (i + 1), value: c.value == null ? null : c.value, disabled: disabled, on: !!c.value && c.value !== 'OFF' && !disabled,
+        index: i + 1, label: 'Cycle de filtration ' + (i + 1), value: c.value == null ? null : c.value, disabled: disabled, on: !!c.value && c.value !== 'OFF' && !disabled,
         start: ok ? pad(c.hour) + ':' + pad(c.minute) : null, minutes: disabled || c.durationMinutes == null ? null : Number(c.durationMinutes),
         duration: disabled ? null : durationText(c.durationMinutes)
       };

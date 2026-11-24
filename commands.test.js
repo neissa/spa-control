@@ -122,16 +122,16 @@ test('mode, plage, panneau, échelle, filtre 2', () => {
   assert.equal(C.filter2(ID, false).body.state, 'OFF');
 });
 
-test('timeFormat: HH:MM, unverified, heure absente', () => {
+test('timeFormat: HH:MM, heure absente', () => {
   const r = C.timeFormat(ID, st(), true);
-  assert.deepEqual(r, Object.assign(B('/time', { time: '07:05', isMilitaryFormat: true }), { unverified: true }));
+  assert.deepEqual(r, B('/time', { time: '07:05', isMilitaryFormat: true }));
   assert.throws(() => C.timeFormat(ID, st({ hour: null }), true), /Heure/);
   assert.throws(() => C.timeFormat(ID, st({ minute: undefined }), false), /Heure/);
 });
 
-test('filterCycle: corps, unverified, validations', () => {
+test('filterCycle: corps, validations', () => {
   const f = { componentType: 'FILTER', port: '1' };
-  assert.deepEqual(C.filterCycle(ID, f, '08:30', 2), Object.assign(B('/filter-cycles/schedule', { deviceNumber: 1, numOfIntervals: 8, time: '08:30' }), { unverified: true }));
+  assert.deepEqual(C.filterCycle(ID, f, '08:30', 2), B('/filter-cycles/schedule', { deviceNumber: 1, numOfIntervals: 8, time: '08:30' }));
   assert.equal(C.filterCycle(ID, { componentType: 'FILTER', port: 0 }, '00:00', 0.25).body.numOfIntervals, 1);
   assert.equal(C.filterCycle(ID, f, '23:59', 24).body.numOfIntervals, 96);
   assert.throws(() => C.filterCycle(ID, f, '8:30', 2), /HH:MM/);

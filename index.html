@@ -78,7 +78,6 @@
   .stp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .stp .round{width:44px;padding:0;justify-content:center;font-size:24px;border-radius:22px}
   .stp output{min-width:5.5em;text-align:center;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
-  .badge-x{display:inline-block;font-size:13px;font-weight:600;padding:2px 8px;border-radius:8px;border:1px solid var(--warn-text);color:var(--warn-text);background:var(--warn-bg)}
   .qa{position:relative;z-index:1;margin-top:12px;border-top:1px solid var(--line);padding-top:4px}
   .qrow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;min-height:48px}
   .qa>.btn{margin-top:4px}
@@ -128,10 +127,8 @@
   <div class=foot>
     <button id=notif>Activer les notifications d'alerte</button>
     <button id=logout>Se déconnecter</button>
-    <div class=expbox><button class=sw id=exp role=switch aria-checked=false aria-label="Commandes expérimentales" aria-describedby=expd><span class=swt style="min-width:0">Commandes expérimentales : <span id=expt>désactivées</span></span><span class=track aria-hidden=true><span class=thumb></span></span></button>
-    <small id=expd>Réglages jamais vérifiés sur un vrai spa (format 12/24 h, cycle de filtration, heure). Désactivées par défaut.</small></div>
     <div class=expbox><button class=sw id=autot role=switch aria-checked=true aria-label="Correction automatique de l'heure" aria-describedby=autotd><span class=swt style="min-width:0">Correction automatique de l'heure : <span id=autott>activée</span></span><span class=track aria-hidden=true><span class=thumb></span></span></button>
-    <small id=autotd>Page ouverte, si l'horloge d'un spa en ligne dérive de plus de 5 min, l'heure de cet appareil lui est renvoyée (une tentative par spa toutes les 30 min, arrêt après 2 échecs). Sur le spa …0009 cette commande n'a pas d'effet observé.</small></div>
+    <small id=autotd>Page ouverte, si l'horloge d'un spa en ligne dérive de plus de 5 min, l'heure de cet appareil lui est renvoyée (une tentative par spa toutes les 30 min, arrêt après 2 échecs).</small></div>
     <small>La déconnexion efface les jetons et les données du compte ; relevés, événements et noms restent sur cet appareil.</small>
   </div>
   <p><small>Les relevés ne sont faits que page ouverte. Garder cet onglet ouvert pour surveiller le spa.</small></p>
@@ -342,7 +339,6 @@ const noFilt = (x, t) => t.current == null && Number(x.errorCode) === 38 ? ' <sm
 const row = (k, v) => `<div class=row><dt>${k}</dt><dd>${v}</dd></div>`;
 const group = (t, rows) => `<section><h2>${t}</h2><dl class=list>${rows}</dl></section>`;
 const pumpLabels = id => { const pl = {}; Object.entries(store('pumpLabels') || {}).forEach(([k, v]) => { if (k.startsWith(id + '|')) pl[k.slice(id.length + 1)] = v; }); return pl; };
-const experimental = () => store('experimental') === true;
 const STALE_MS = 180000, CLOCK_MS = 90000; // état connu trop ancien pour commander / pour renvoyer l'heure du spa
 
 // ---- Commandes : état d'interface en mémoire (survit aux rendus, jamais stocké) ----
@@ -372,7 +368,6 @@ function seg(id, ck, cmd, lbl, opts, cur) {
 const isLocked = st => st.panelLock === true || /^LOCK/.test(String(st.panelLock));
 const hasPanelLock = st => Object.hasOwn(st, 'panelLock') && st.panelLock != null; // clé absente => pas d'interrupteur
 const filter2 = st => SpaView.components(st).filter(k => k.type === 'FILTER')[1];
-const filter2Ok = st => { const f = filter2(st); return f && f.value !== 'DISABLED' ? f : null; }; // 2e filtre absent ou DISABLED => rien
 
 function alertsHtml(live, info, now) {
   const items = [];
@@ -415,8 +410,8 @@ function tempCtl(id, t, x) {
     <output aria-label="Consigne à appliquer">${esc(C(SpaView.toC(cur)))} <small>(${cur} °F)</small></output>
     <button class="btn round" ${dat('tup', id)} aria-label="Monter la consigne de 1 °F"${busyAttr(off || (hi != null && cur + 1 > hi))}>+</button>
     <button class=primary ${dat('tapply', id)}${busyAttr(off || d == null)}>${b ? 'Envoi…' : 'Appliquer'}</button></div>
-    ${locked ? '<p class=sub style="margin:4px 0 0"><strong>Consigne verrouillée</strong> : déverrouillez-la sur le panneau du spa (ou via les commandes expérimentales) pour la modifier.</p>' : ''}
-    <small>Plage ${esc((own(RANGE, t.rangeMode) || '').toLowerCase())} : ${esc(C(SpaView.toC(lo)))} à ${esc(C(SpaView.toC(hi)))}${d == null && !locked ? ' · modifiez la valeur puis appuyez sur Appliquer' : ''}<br>Sur certains spas la consigne est acceptée sans changer (comportement identique au portail officiel).</small>${hint(k)}`;
+    ${locked ? '<p class=sub style="margin:4px 0 0"><strong>Consigne verrouillée</strong> : déverrouillez-la sur le panneau du spa (ou avec l’interrupteur « Verrouillage de la consigne ») pour la modifier.</p>' : ''}
+    <small>Plage ${esc((own(RANGE, t.rangeMode) || '').toLowerCase())} : ${esc(C(SpaView.toC(lo)))} à ${esc(C(SpaView.toC(hi)))}${d == null && !locked ? ' · modifiez la valeur puis appuyez sur Appliquer' : ''}</small>${hint(k)}`;
 }
 
 function logGroup(id, kind, title, fixed, mapRow, local) {
@@ -430,8 +425,23 @@ function logGroup(id, kind, title, fixed, mapRow, local) {
 }
 
 const c8zHtml = ht => ht.c8zStatus == null && ht.c8zState == null ? '—' : `${esc(SpaView.c8zText(ht.c8zStatus) ?? '—')}<small>chauffage C8Zone : ${val(ht.c8zState)} · lecture seule</small>`;
-const filtHtml = x => SpaView.filterCycles(x).map(f => row(esc(f.label),
-  f.disabled ? 'Désactivé' : `${esc(own(V, f.value) || f.value || '—')}<small>Début ${esc(f.start || '—')} · durée ${esc(f.duration || '—')}</small>`)).join('') || row('Aucun cycle de filtration relevé', '');
+function filtHtml(id, x) {
+  const fc = ui.fc[id] || {}, cyc = SpaView.filterCycles(x);
+  return cyc.map((f, i) => {
+    const k = kk(id, 'fcycle'), ed = fc.edit === i, tog = kk(id, 'filter2');
+    const info = f.disabled ? '' : `<small>Début ${esc(f.start || '—')} · durée ${esc(f.duration || '—')}</small>`;
+    let st, act = '';
+    if (i === 1 && f.value != null) { // seul le cycle 2 a une commande d'activation (le cycle 1 n'en a pas)
+      st = f.disabled ? 'Désactivé' : f.value === 'ON' ? 'Activé, en cours' : 'Activé';
+      act = `<button class=btn ${dat('filter2', id)}${busyAttr(ui.busy[tog])}>${ui.busy[tog] ? 'Envoi…' : f.disabled ? 'Activer le cycle 2' : 'Désactiver le cycle 2'}</button>${hint(tog)}`;
+    } else st = f.disabled ? 'Désactivé' : f.value === 'ON' ? 'En cours' : f.value === 'OFF' ? 'Pas en cours' : '—';
+    const edit = f.disabled ? `<small>Activez d'abord le cycle ${i + 1}</small>` : `<button class=btn ${dat('fedit', id, i)}${busyAttr(ui.busy[k])}>Modifier</button>`;
+    const form = !ed ? '' : `<div class="row blk"><div class=field><label for=fcstart>Heure de début</label><input id=fcstart type=time data-draft=start value="${esc(fc.start || '')}">
+      <label for=fchours>Durée (heures)</label><input id=fchours type=text inputmode=decimal data-draft=hours placeholder="2 ou 1,5" value="${esc(fc.hours || '')}"></div>
+      <div class=acts><button class=primary ${dat('fcycle', id)}${busyAttr(ui.busy[k])}>${ui.busy[k] ? 'Envoi…' : 'Régler le cycle'}</button><button class=btn ${dat('fcancel', id)}>Annuler</button></div>${hint(k)}</div>`;
+    return row(esc(f.label), `${esc(st)}${info}<div class=acts>${act}${edit}</div>`) + form;
+  }).join('') || row('Aucun cycle de filtration relevé', '');
+}
 const SID = /^[0-9a-f]{24}$/i;
 function progHtml(id, list) {
   const nb = !!ui.busy[kk(id, 's:new')];
@@ -455,19 +465,10 @@ function detail(id, live, info, all, now) {
   const dev = new Date(now).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const ev = es => es.map(e => row(esc(T(e.ts)), esc(e.msg))).join('') || row('<small>Aucun événement local</small>', '');
   const errs = tc.messages.map(m => row(esc(m.severity || 'Message'), esc(m.message))).join('');
-  const f2 = filter2Ok(x), fc = ui.fc[id] || {}, filters = comps.filter(k => k.type === 'FILTER');
-  const X = '<span class=badge-x>Expérimental, non vérifié</span>';
-  const expGroup = !experimental() ? '' : group('Commandes expérimentales',
-    (f2 ? row(`Cycle de filtration 2<br>${X}`, sw(id, 'filter2', 'Cycle de filtration 2 (expérimental)', f2.on, 'filter2', null, 'Activé', 'Désactivé')) : '') +
-    (SpaView.tempLock(x) == null ? '' : row(`Verrouillage de la consigne<br>${X}`, sw(id, 'tlock', 'Verrouillage de la consigne (expérimental)', SpaView.tempLock(x), 'tlock', null, 'Verrouillée', 'Déverrouillée') + "<small class=hint>Le portail officiel n'a pas cette commande : vérifiez sur le panneau.</small>")) +
-    row(`Format de l'heure<br>${X}`, `<span class=hint style="text-align:right">Actuel : ${c.military ? '24 h' : '12 h'}</span>`) +
-    `<div class="row blk"><div class=ctl>${seg(id, 'fmt', 'fmt', "Format de l'heure", [['12', '12 h'], ['24', '24 h']], c.military ? '24' : '12')}</div></div>` +
-    `<div class="row blk"><strong>Cycle de filtration</strong> ${X}${filters.length ? `
-      <div class=field>${filters.length > 1 ? `<label for=fcidx>Filtre</label><select id=fcidx data-draft=idx>${filters.map((k, i) => `<option value="${i}"${String(fc.idx || 0) === String(i) ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}</select>` : ''}
-      <label for=fcstart>Heure de début</label><input id=fcstart type=time data-draft=start value="${esc(fc.start || '')}">
-      <label for=fchours>Durée (heures)</label><input id=fchours type=text inputmode=decimal data-draft=hours placeholder="2 ou 1,5" value="${esc(fc.hours || '')}"></div>
-      <button class=btn ${dat('fcycle', id)}${busyAttr(ui.busy[kk(id, 'fcycle')])}>${ui.busy[kk(id, 'fcycle')] ? 'Envoi…' : 'Régler le cycle…'}</button>${hint(kk(id, 'fcycle'))}` : '<p class=sub>Aucun filtre relevé.</p>'}</div>` +
-    `<div class="row blk"><strong>Heure du spa</strong> ${X}<div class=ctl><button class=btn ${dat('settime', id)}${busyAttr(ui.busy[kk(id, 'time')])}>${ui.busy[kk(id, 'time')] ? 'Envoi…' : "Régler l'heure du spa sur celle de cet appareil…"}</button>${hint(kk(id, 'time'))}</div></div>`);
+  const tlk = SpaView.tempLock(x);
+  const tlkHtml = tlk == null ? '' : row('Verrouillage de la consigne', sw(id, 'tlock', 'Verrouillage de la consigne', tlk, 'tlock', null, 'Verrouillée', 'Déverrouillée'));
+  const fmtHtml = `<div class="row blk"><strong>Format de l'heure</strong><div class=ctl>${seg(id, 'fmt', 'fmt', "Format de l'heure", [['12', '12 h'], ['24', '24 h']], c.military ? '24' : '12')}</div></div>` +
+    `<div class="row blk"><strong>Régler l'heure</strong><div class=ctl><button class=btn ${dat('settime', id)}${busyAttr(ui.busy[kk(id, 'time')])}>${ui.busy[kk(id, 'time')] ? 'Envoi…' : "Régler l'heure du spa sur celle de cet appareil"}</button>${hint(kk(id, 'time'))}</div></div>`;
   return `<a class=back href="#/">‹ Tableau de bord</a>
     <div class=sub>${status(x.online)} · relevé ${esc(T(l.ts))}</div>
     ${x.online ? '' : '<p class=note>Spa hors ligne : aucune commande n\'est envoyée tant qu\'il ne répond pas.</p>'}
@@ -477,18 +478,17 @@ function detail(id, live, info, all, now) {
       `<div class=row style="display:block">${waterBar(t.current, t.set)}</div>` +
       row('Plage active', val(own(RANGE, t.rangeMode) || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`) +
       `<div class="row blk"><strong>Nouvelle consigne</strong><div class=ctl>${tempCtl(id, t, x)}</div></div>` +
-      '')}
+      tlkHtml)}
     ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(own(MODE_TXT, ht.mode) || 'Mode inconnu.')}</p></div>` +
       `<div class="row blk"><strong>Plage de température</strong><div class=ctl>${seg(id, 'range', 'range', 'Plage de température', [['HIGH', 'Haute'], ['LOW', 'Basse']], ht.range)}</div></div>` +
       row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('C8Zone', c8zHtml(ht)))}
-    ${group('Filtration', filtHtml(x))}
-    ${group('Pompes et lumières', comps.map(k => row(esc(k.label) + (k.type === 'CIRCULATION_PUMP' ? '<br><small>Elle fonctionne aussi seule (filtration, chauffage) : le spa peut la rallumer ou la couper lui-même.</small>' : ''), compCtl(id, k) +
+    ${group('Filtration', filtHtml(id, x))}
+    ${group('Pompes et lumières', comps.filter(k => k.type !== 'FILTER').map(k => row(esc(k.label) + (k.type === 'CIRCULATION_PUMP' ? '<br><small>Elle fonctionne aussi seule (filtration, chauffage) : le spa peut la rallumer ou la couper lui-même.</small>' : ''), compCtl(id, k) +
       `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
-    ${hasPanelLock(x) ? group('Panneau', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé') + (isLocked(x) ? '' : "<small class=hint>Le verrouillage à distance n'a pas pu être confirmé lors des essais (le déverrouillage fonctionne). Vérifiez sur le panneau.</small>"))) : ''}
-    ${expGroup}
+    ${hasPanelLock(x) ? group('Panneau', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé'))) : ''}
     ${group('Heure', row('Heure du spa', esc(c.text)) + row('Format', c.military ? '24 h' : '12 h') + row("Heure de l'appareil", esc(dev)) +
-      row('Écart', c.driftMin == null ? '—' : SpaView.driftText(c.driftMin)))}
-    ${c.drifted ? `<p class=note>${!autoOn() ? "La correction automatique est désactivée (pied de page) : " : atGet(id).fails >= 2 ? "Correction automatique arrêtée pour ce spa (2 échecs) : réactivez l'interrupteur du pied de page pour la réarmer ; " : "Correction automatique active (écart > 5 min, spa en ligne) : "}réglez l'heure depuis le panneau du spa${experimental() ? ' ou avec la commande expérimentale ci-dessus.' : ', ou activez les commandes expérimentales (pied de page).'} Sur le spa …0009 la commande d'heure n'a pas d'effet observé.</p>` : ''}
+      row('Écart', c.driftMin == null ? '—' : SpaView.driftText(c.driftMin)) + fmtHtml)}
+    ${c.drifted ? `<p class=note>${!autoOn() ? "La correction automatique est désactivée (pied de page) : " : atGet(id).fails >= 2 ? "Correction automatique arrêtée pour ce spa (2 échecs) : réactivez l'interrupteur du pied de page pour la réarmer ; " : "Correction automatique active (écart > 5 min, spa en ligne) : "}réglez l'heure depuis le panneau du spa ou avec le bouton « Régler l'heure du spa sur celle de cet appareil » ci-dessus.</p>` : ''}
     ${group('Programmes', progHtml(id, scheds))}
     ${group('Informations techniques', row('Numéro de série', val(tc.serial)) + row('Modèle', val(tc.model)) + row('Constructeur', val(tc.oem)) + row('Revendeur', val(tc.dealer)) +
       row('Firmware contrôleur', val(tc.firmware)) + row('Version passerelle', val(tc.gateway)) + row('Connectivité', x.online ? 'En ligne' : 'Hors ligne') +
@@ -590,7 +590,7 @@ async function run(id, ck, build, maxMs) {
   ui.busy[k] = 1; if (lockable) ui.lock[k] = { id, what: b.desc }; safeRender();
   try { await command(b.req); } catch (e) { delete ui.busy[k]; delete ui.lock[k]; toast(`${b.desc} : ${e.message}`, 'error'); safeRender(); return; }
   delete ui.busy[k];
-  if (b.expect || b.judge) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk, b.unreadable, b.judge, b.opt);
+  if (b.expect || b.judge) startConfirm(id, k, b.desc, b.expect, b.onOk, b.unreadable, b.judge, b.opt);
   else { delete ui.lock[k]; toast(`${b.desc} : envoyé. Ce réglage ne peut pas être relu ici : vérifiez-le sur le panneau du spa.`, 'warn'); safeRender(); }
 }
 const lv = x => own(V, x) || x;
@@ -653,10 +653,6 @@ async function allOff(id) {
   else { delete ui.lock[k]; safeRender(); }
   if (failed.length) toast(`Tout éteindre : ${failed.length} échec(s) : ${failed.join(' ; ')}`, 'error');
 }
-const expConfirm = (what, detailTxt) => ask({ title: 'Commande expérimentale', text: `${what} Cette commande n'a jamais été vérifiée sur un vrai spa. ${detailTxt || ''}`, items: [], ok: 'Envoyer' }).then(ok => { if (ok) $('dlg').close(); return ok; });
-
-// Les commandes expérimentales revérifient le réglage au moment d'envoyer (le bouton a pu rester affiché).
-const expOn = () => experimental() || (toast('Commande expérimentale désactivée : activez-la en pied de page.', 'error'), false);
 async function doCmd(d) {
   const id = d.id;
   switch (d.cmd) {
@@ -684,15 +680,11 @@ async function doCmd(d) {
       // Le serveur ne rafraîchit l'état que toutes les ~30 s : ne pas conclure à l'échec avant 45 s.
       opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre.", fail: to ? 'Verrouillage non confirmé par le spa' : undefined } }; });
     case 'tlock': {
-      if (!expOn()) return;
-      const l0 = own(store('live'), id), c0 = l0 && SpaView.tempLock(l0.state);
-      if (!await expConfirm(`${c0 ? 'Déverrouiller' : 'Verrouiller'} la consigne de ${label(id)} ?`, "L'effet est relu sur le spa ; sinon vérifiez-le sur le panneau.")) return;
-      if (!expOn()) return;
       return run(id, 'tlock', s => {
       const cur = SpaView.tempLock(s); if (cur == null) throw new Error('Verrouillage de la consigne indisponible : le spa ne le signale pas.');
       const to = !cur;
       return { req: SpaCmd.tempLock(id, to), desc: to ? 'Verrouillage de la consigne' : 'Déverrouillage de la consigne', expect: n => SpaView.tempLock(n) === to,
-        opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre.", fail: 'Non confirmé par le spa (commande non vérifiée sur un vrai spa)' } };
+        opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre.", fail: 'Non confirmé par le spa' } };
       });
     }
     case 'snew': return openSched(id, null);
@@ -711,30 +703,35 @@ async function doCmd(d) {
       const err = await schedCall(id, 's:' + sc.id, SpaCmd.scheduleDelete(sc.id), `Suppression de « ${sc.name} »`); if (err) toast(err, 'error');
       return;
     }
-    case 'filter2': {
-      if (!expOn()) return;
-      if (!await expConfirm("Activer ou désactiver le cycle de filtration 2 ?", "La relecture de son état (2e filtre actif ou non) est une hypothèse.")) return;
-      return run(id, 'filter2', s => { const f = filter2Ok(s); if (!f) throw new Error('Cycle de filtration 2 absent ou désactivé.'); const to = !f.on; return { req: SpaCmd.filter2(id, to), desc: `Cycle de filtration 2 ${to ? 'activé' : 'désactivé'}`, expect: n => { const m = filter2(n); return !!m && m.on === to; } }; });
+    case 'filter2': return run(id, 'filter2', s => {
+      const f = filter2(s); if (!f || !['DISABLED', 'OFF', 'ON'].includes(f.value)) throw new Error('Cycle de filtration 2 absent ou état inconnu.');
+      const to = f.value === 'DISABLED'; // DISABLED -> activer ; OFF/ON -> désactiver
+      return { req: SpaCmd.filter2(id, to), desc: `Cycle de filtration 2 ${to ? 'activé' : 'désactivé'}`, expect: n => { const m = filter2(n); return !!m && (m.value === 'DISABLED') === !to; },
+        opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre." } };
+    });
+    case 'fedit': {
+      const f = SpaView.filterCycles(own(store('live'), id).state)[Number(d.key)]; if (!f || f.disabled) return;
+      ui.fc[id] = { edit: Number(d.key), idx: d.key, start: f.start || '', hours: f.minutes != null ? String(f.minutes / 60).replace('.', ',') : '' }; return safeRender();
     }
+    case 'fcancel': delete ui.fc[id]; return safeRender();
     case 'alloff': return allOff(id);
     case 'more': return loadLog(id, d.key, true);
     case 'fmt': {
-      if (!expOn()) return;
       const l = own(store('live'), id); if (!l || !precheck(id, CLOCK_MS)) return; const mil = d.key === '24'; if (!!l.state.military === mil) return;
-      if (!await expConfirm(`Passer l'affichage de l'heure du spa en ${d.key} h ?`, "L'heure actuelle du spa est renvoyée telle quelle.")) return;
       return run(id, 'fmt', s => ({ req: SpaCmd.timeFormat(id, s, mil), desc: `Format ${d.key} h`, expect: n => !!n.military === mil }), CLOCK_MS); // l'heure renvoyée vient de l'état connu : recontrôlé après la confirmation
     }
     case 'fcycle': {
-      if (!expOn() || !precheck(id)) return; const fc = ui.fc[id] || {};
+      if (!precheck(id)) return; const fc = ui.fc[id] || {};
       const hrs = Number(String(fc.hours || '').replace(',', '.') || NaN);
       try { SpaCmd.filterCycle(id, SpaView.components(own(store('live'), id).state, pumpLabels(id)).filter(k => k.type === 'FILTER')[Number(fc.idx) || 0].comp, fc.start || '', hrs); } catch (e) { return toast(e.message, 'error'); }
-      if (!await expConfirm(`Régler le cycle de filtration : début ${fc.start}, durée ${fc.hours} h ?`, "La conversion de la durée est une hypothèse.")) return;
-      return run(id, 'fcycle', s => ({ req: SpaCmd.filterCycle(id, SpaView.components(s, pumpLabels(id)).filter(k => k.type === 'FILTER')[Number(fc.idx) || 0].comp, fc.start || '', hrs), desc: 'Cycle de filtration' }));
+      return run(id, 'fcycle', s => ({ req: SpaCmd.filterCycle(id, SpaView.components(s, pumpLabels(id)).filter(k => k.type === 'FILTER')[Number(fc.idx) || 0].comp, fc.start || '', hrs), desc: 'Cycle de filtration',
+        expect: n => { const c = SpaView.filterCycles(n)[Number(fc.idx) || 0]; return !!c && c.start === fc.start && c.minutes === Math.round(hrs * 60); }, onOk: () => { delete ui.fc[id]; },
+        opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre." } }));
     }
     case 'settime': {
-      if (!expOn() || !precheck(id, CLOCK_MS)) return; const n = new Date();
-      if (!await expConfirm(`Régler l'heure du spa sur ${n.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}, l'heure de cet appareil ?`, "Le format 12/24 h actuel est conservé.")) return;
-      if (!expOn()) return;
+      if (!precheck(id, CLOCK_MS)) return; const n = new Date();
+      if (!await ask({ title: "Régler l'heure du spa ?", text: `L'heure du spa sera remplacée par ${n.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}, celle de cet appareil.`, items: [], ok: 'Régler' })) return;
+      $('dlg').close();
       return run(id, 'time', s => { const now = new Date(); return { req: SpaCmd.timeFormat(id, { hour: now.getHours(), minute: now.getMinutes() }, !!s.military), desc: "Heure du spa",
         expect: nw => { const c = SpaView.clock(nw, Date.now()); return typeof c.driftMin === 'number' && !c.drifted; }, unreadable: nw => typeof SpaView.clock(nw, Date.now()).driftMin !== 'number' }; }, CLOCK_MS);
     }
@@ -825,10 +822,8 @@ $('view').oninput = e => { const f = e.target.dataset.draft, id = route(); if (f
 // Données du compte effacées ; relevés, événements et libellés (historique local) conservés.
 $('logout').onclick = () => { for (const k of ['tokens', 'info', 'live', 'schedules']) localStorage.removeItem('spa.' + k); show(false); };
 $('notif').onclick = () => window.Notification && Notification.requestPermission();
-const syncExp = () => { const on = experimental(); $('exp').setAttribute('aria-checked', on); $('expt').textContent = on ? 'activées' : 'désactivées'; };
-$('exp').onclick = () => { store('experimental', !experimental()); syncExp(); safeRender(); };
 const syncAuto = () => { const on = autoOn(); $('autot').setAttribute('aria-checked', on); $('autott').textContent = on ? 'activée' : 'désactivée'; };
 $('autot').onclick = () => { const on = !autoOn(); store('autoTime', on); if (on) atReset(); syncAuto(); safeRender(); }; // réactiver = remise à zéro
-syncExp(); syncAuto();
+syncAuto();
 show(!!store('tokens'));
 </script>

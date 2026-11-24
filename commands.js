@@ -70,11 +70,9 @@ var SpaCmd = (function () {
     return req(spaId, '/panel/state', { state: locked ? 'LOCK_PANEL' : 'UNLOCK_PANEL' });
   }
   function scale(spaId, s) { return req(spaId, '/temperature/scale', { scale: oneOf(s, ['CELSIUS', 'FAHRENHEIT'], 'Échelle') }); }
-  function tempLock(spaId, locked) { // non vérifié sur un vrai spa
+  function tempLock(spaId, locked) {
     if (typeof locked !== 'boolean') throw new Error('Verrouillage : booléen attendu.');
-    var r = req(spaId, '/panel/state', { state: locked ? 'LOCK_TEMP_SETTING' : 'UNLOCK_TEMP_SETTING' });
-    r.unverified = true;
-    return r;
+    return req(spaId, '/panel/state', { state: locked ? 'LOCK_TEMP_SETTING' : 'UNLOCK_TEMP_SETTING' });
   }
   function filter2(spaId, on) {
     if (typeof on !== 'boolean') throw new Error('Filtre 2 : booléen attendu.');
@@ -86,13 +84,11 @@ var SpaCmd = (function () {
     if (typeof military !== 'boolean') throw new Error('Format 24 h : booléen attendu.');
     return time(spaId, pad(state.hour) + ':' + pad(state.minute), military);
   }
-  // Format `HH:MM` 24 h confirmé par le portail (capture du 24/11/2026), mais sans effet observé sur le spa …0009 : reste signalé « expérimental » dans l'interface.
+  // Format `HH:MM` 24 h confirmé par le portail (capture du 24/11/2026).
   function time(spaId, hhmm, military) {
     if (typeof hhmm !== 'string' || !HHMM.test(hhmm)) throw new Error('Heure invalide (HH:MM attendu).');
     if (typeof military !== 'boolean') throw new Error('Format 24 h : booléen attendu.');
-    var r = req(spaId, '/time', { time: hhmm, isMilitaryFormat: military });
-    r.unverified = true;
-    return r;
+    return req(spaId, '/time', { time: hhmm, isMilitaryFormat: military });
   }
 
   function filterCycle(spaId, filterComp, startHHMM, hours) {
@@ -101,10 +97,8 @@ var SpaCmd = (function () {
     if (!isFinite(n)) throw new Error('Port manquant pour le filtre.');
     if (typeof startHHMM !== 'string' || !HHMM.test(startHHMM)) throw new Error('Heure de début invalide (HH:MM attendu).');
     if (typeof hours !== 'number' || !(hours >= 0.25 && hours <= 24)) throw new Error('Durée invalide (0,25 à 24 h).');
-    var r = req(spaId, '/filter-cycles/schedule', { deviceNumber: n, numOfIntervals: Math.round(hours * 4), time: startHHMM });
-    // numOfIntervals = minutes / 15 (60 min = 4), confirmé par le portail; sans effet observé sur le spa …0009.
-    r.unverified = true;
-    return r;
+    // numOfIntervals = minutes / 15 (60 min = 4), confirmé par le portail.
+    return req(spaId, '/filter-cycles/schedule', { deviceNumber: n, numOfIntervals: Math.round(hours * 4), time: startHHMM });
   }
 
   // ---- Programmes (/spa-schedules, chemin complet depuis /web, renvoie {method, path, body}). Spécification : docs/API.md « Requêtes capturées ». ----

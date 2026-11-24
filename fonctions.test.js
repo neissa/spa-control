@@ -16,7 +16,7 @@ test('filterCycles: état, début HH:MM, durée; DISABLED sans heure', () => {
   ] };
   const c = V.filterCycles(s);
   assert.equal(c.length, 2);
-  assert.deepEqual([c[0].label, c[0].value, c[0].start, c[0].duration, c[0].on, c[0].disabled], ['Cycle 1', 'OFF', '23:15', '1 h', false, false]);
+  assert.deepEqual([c[0].label, c[0].value, c[0].start, c[0].duration, c[0].on, c[0].disabled], ['Cycle de filtration 1', 'OFF', '23:15', '1 h', false, false]);
   assert.deepEqual([c[1].value, c[1].start, c[1].duration, c[1].disabled], ['DISABLED', null, null, true]);
   assert.equal(V.filterCycles({ components: [{ componentType: 'FILTER', value: 'ON', hour: 7, minute: 5, durationMinutes: 90 }] })[0].duration, '1 h 30');
   assert.equal(V.filterCycles({}).length, 0);
@@ -71,14 +71,14 @@ test('autoTimeDecision: nominal, écart faible, hors ligne, état périmé, essa
 });
 
 test('time: HH:MM et booléen', () => {
-  assert.deepEqual(C.time(ID, '18:16', false), Object.assign(B('/time', { time: '18:16', isMilitaryFormat: false }), { unverified: true }));
+  assert.deepEqual(C.time(ID, '18:16', false), B('/time', { time: '18:16', isMilitaryFormat: false }));
   assert.throws(() => C.time(ID, '8:16', false), /HH:MM/);
   assert.throws(() => C.time(ID, '18:16', 'non'), /booléen/);
 });
 
 test('tempLock: panel/state LOCK/UNLOCK_TEMP_SETTING', () => {
-  assert.deepEqual(C.tempLock(ID, true), Object.assign(B('/panel/state', { state: 'LOCK_TEMP_SETTING' }), { unverified: true }));
-  assert.deepEqual(C.tempLock(ID, false), Object.assign(B('/panel/state', { state: 'UNLOCK_TEMP_SETTING' }), { unverified: true }));
+  assert.deepEqual(C.tempLock(ID, true), B('/panel/state', { state: 'LOCK_TEMP_SETTING' }));
+  assert.deepEqual(C.tempLock(ID, false), B('/panel/state', { state: 'UNLOCK_TEMP_SETTING' }));
   assert.throws(() => C.tempLock(ID, 'oui'), /booléen/);
 });
 
@@ -111,4 +111,14 @@ test('scheduleUpdate / Trigger / Delete: méthode, chemin, corps; id hexadécima
     assert.throws(() => C.scheduleTrigger(bad), /Identifiant/);
     assert.throws(() => C.scheduleDelete(bad), /Identifiant/);
   }
+});
+
+test('cycle 2 : DISABLED => activer (ON), OFF/ON => désactiver (OFF); modification via le port 1', () => {
+  const st = v => ({ components: [{ componentType: 'FILTER', port: 0, value: 'OFF', hour: 1, minute: 0, durationMinutes: 60 }, { componentType: 'FILTER', port: 1, value: v }] });
+  for (const [v, to] of [['DISABLED', 'ON'], ['OFF', 'OFF'], ['ON', 'OFF']]) {
+    const f = V.filterCycles(st(v))[1];
+    assert.equal(C.filter2(ID, f.disabled).body.state, to);
+  }
+  const comp = V.components(st('OFF')).filter(k => k.type === 'FILTER')[1].comp;
+  assert.deepEqual(C.filterCycle(ID, comp, '08:30', 1), B('/filter-cycles/schedule', { deviceNumber: 1, numOfIntervals: 4, time: '08:30' }));
 });
