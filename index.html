@@ -1,44 +1,98 @@
 <!doctype html>
 <html lang="fr">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Spa</title>
 <style>
-  body{font:16px system-ui;max-width:760px;margin:1rem auto;padding:0 1rem;background:#111;color:#eee}
-  .card{background:#1c1c1c;border-radius:8px;padding:1rem;margin:1rem 0} h2{margin:.2rem 0}
-  .off{color:#f66;font-weight:bold} .on{color:#6c6}
-  table{border-collapse:collapse;width:100%} td{padding:.2rem .5rem;border-top:1px solid #333}
-  input,button{font:inherit;padding:.4rem;margin:.2rem 0;display:block} #err{color:#f66}
+  /* Couleurs sémantiques ; ratios de contraste calculés (voir commit) : texte >= 6,5:1, eau >= 5,7:1, alertes >= 7:1 */
+  :root{--bg:#eef3f6;--surface:#fff;--text:#10222d;--text2:#475966;--water:#046786;--on-water:#fff;--track:#d3e0e7;--line:#c9d6de;
+    --warn-bg:#fff1d6;--warn-text:#6b3b00;--crit-bg:#fde4e4;--crit-text:#9b1218}
+  @media (prefers-color-scheme:dark){:root{--bg:#0b161d;--surface:#14242d;--text:#e8f2f6;--text2:#a3b8c3;--water:#5ccbea;--on-water:#05212b;--track:#2a414d;--line:#2f4752;
+    --warn-bg:#3a2b0d;--warn-text:#ffc870;--crit-bg:#40171a;--crit-text:#ffa3a3}}
+  *{box-sizing:border-box}
+  body{font:17px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--text)}
+  main{max-width:880px;margin:0 auto;padding:16px 16px 48px}
+  h1{font-size:28px;line-height:1.15;margin:8px 0 16px}
+  h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin:24px 0 6px 4px;font-weight:600}
+  small,.sub{font-size:15px;color:var(--text2)}
+  a{color:var(--water)}
+  :focus-visible{outline:3px solid var(--water);outline-offset:2px}
+  .btn,button,input{font:inherit;min-height:44px;border-radius:10px}
+  .btn,button{padding:0 16px;border:1px solid var(--water);background:transparent;color:var(--water);cursor:pointer;display:inline-flex;align-items:center}
+  button.primary{background:var(--water);color:var(--on-water)}
+  input{display:block;width:100%;padding:0 12px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin:4px 0 12px}
+  label{font-weight:600}
+  .back{display:inline-flex;align-items:center;min-height:44px;margin-left:-4px;padding:0 4px;text-decoration:none;font-weight:600}
+  #err{margin:8px 0;padding:0}#err:not(:empty){padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-text)}
+  .grid{display:grid;gap:12px}@media (min-width:720px){.grid{grid-template-columns:1fr 1fr}}
+  .card{display:block;background:var(--surface);border-radius:16px;padding:16px;color:var(--text);text-decoration:none;border:1px solid var(--line)}
+  a.card:hover{border-color:var(--water)}
+  .card h3{font-size:20px;margin:0 0 4px}
+  .status{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+  .dot{width:12px;height:12px;border-radius:50%;border:3px solid var(--water);background:var(--water)}
+  .dot.off{background:transparent;border-color:var(--crit-text)} .status.offl{color:var(--crit-text)}
+  .temp{font-size:44px;font-weight:300;line-height:1.1;color:var(--water);margin:8px 0 4px;font-variant-numeric:tabular-nums}
+  .temp small{font-size:17px;font-weight:400}
+  /* Signature : un « niveau d'eau » horizontal, l'eau monte jusqu'à la température, le trait marque la consigne */
+  .water{position:relative;height:14px;border-radius:7px;background:var(--track);overflow:hidden;margin:4px 0 8px}
+  .water i{position:absolute;inset:0 auto 0 0;background:var(--water);border-radius:7px}
+  .water b{position:absolute;top:0;bottom:0;width:3px;background:var(--text)}
+  @media (prefers-reduced-motion:no-preference){.water i{transition:width .6s ease}}
+  .kv{display:flex;flex-wrap:wrap;gap:4px 16px;margin:8px 0 0;font-size:15px;color:var(--text2)}
+  .list{margin:0;background:var(--surface);border-radius:14px;border:1px solid var(--line)}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:48px;padding:8px 16px;border-top:1px solid var(--line)}
+  .row:first-child{border-top:0}
+  .row dt{margin:0}.row dd{margin:0;text-align:right;color:var(--text2);display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap}
+  .row .btn{min-width:44px}
+  .note{margin:8px 4px 0;padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-text);font-size:15px}
+  ul.alerts{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px}
+  .alert{display:flex;gap:12px;padding:12px 16px;border-radius:14px;align-items:flex-start}
+  .alert.warning{background:var(--warn-bg);color:var(--warn-text)}.alert.critical{background:var(--crit-bg);color:var(--crit-text)}
+  .alert a{color:inherit;font-weight:600}
+  .badge{flex:none;width:20px;height:20px;margin-top:2px;background:currentColor}
+  .critical .badge{border-radius:50%}.warning .badge{clip-path:polygon(50% 0,100% 100%,0 100%)}
+  .ok{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 16px;color:var(--text2)}
+  .foot{margin-top:24px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  #login{background:var(--surface);border-radius:16px;padding:16px;border:1px solid var(--line);max-width:420px}
+  [hidden]{display:none!important}
+  h1:focus{outline:none}
 </style>
-<h1>Spa</h1>
+<main>
+<h1 id=title tabindex=-1>Spa</h1>
+<div id=err role=status></div>
 
-<form id=login class=card hidden>
-  <h2>Connexion Control My Spa</h2>
-  <input id=email type=email placeholder="Email" autocomplete=username required>
-  <input id=pwd type=password placeholder="Mot de passe" autocomplete=current-password required>
-  <button>Se connecter</button>
-  <small>Le mot de passe n'est jamais stocké, seulement les jetons de session.</small>
+<form id=login hidden>
+  <h2 style="margin-left:0">Connexion Control My Spa</h2>
+  <label for=email>Email</label>
+  <input id=email type=email autocomplete=username required>
+  <label for=pwd>Mot de passe</label>
+  <input id=pwd type=password autocomplete=current-password required>
+  <button class=primary>Se connecter</button>
+  <p><small>Le mot de passe n'est jamais stocké, seulement les jetons de session.</small></p>
 </form>
-<div id=err></div>
 
 <div id=app hidden>
-  <div id=spas></div>
-  <div class=card><h2>Durées (7 jours)</h2><div id=stats></div></div>
-  <div class=card><h2>Journal</h2><table id=events></table></div>
-  <button id=notif>Activer les notifications d'alerte</button>
-  <button id=logout>Se déconnecter</button>
-  <small>Les relevés ne sont faits que page ouverte. Garder cet onglet ouvert pour surveiller le spa.</small>
+  <div id=view></div>
+  <div class=foot>
+    <button id=notif>Activer les notifications d'alerte</button>
+    <button id=logout>Se déconnecter</button>
+  </div>
+  <p><small>Les relevés ne sont faits que page ouverte. Garder cet onglet ouvert pour surveiller le spa.</small></p>
 </div>
+</main>
 
 <script src="stats.js"></script>
+<script src="spa.js"></script>
 <script>
-const API = 'https://iot.controlmyspa.com/web', POLL_MS = 60000, KEEP_MS = 14 * 864e5;
+const API = 'https://iot.controlmyspa.com/web', POLL_MS = 60000, KEEP_MS = 14 * 864e5, SCHED_MS = 600000;
 const $ = id => document.getElementById(id);
 const store = (k, v) => v === undefined ? JSON.parse(localStorage.getItem('spa.' + k) || 'null') : localStorage.setItem('spa.' + k, JSON.stringify(v));
 
 // Nom affiché : celui choisi par l'utilisateur, sinon modèle + série
 const label = id => (store('labels') || {})[id] || (store('names') || {})[id] || id;
 
-// ---- API ----
+// ---- API (lecture seule : seuls /auth/* utilisent POST) ----
 // shortcut: corps/réponse de /auth/login et /auth/refresh supposés ({email,password} / {refreshToken} -> {data:{accessToken,refreshToken}}); à confirmer au premier essai.
 async function post(path, body) {
   const r = await fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -56,30 +110,37 @@ async function get(path, retry = true) {
 }
 
 // ---- Relevés ----
-const log = (spa, msg) => {
-  store('events', [{ ts: Date.now(), spa, msg }, ...(store('events') || [])].slice(0, 200));
+const log = (spa, msg, id) => {
+  store('events', [{ ts: Date.now(), spa, msg, id }, ...(store('events') || [])].slice(0, 200));
   if (window.Notification && Notification.permission === 'granted') new Notification('Spa', { body: spa + ' : ' + msg });
 };
+const schedAt = {};
 async function poll() {
   try {
     const { spas } = await get('/spas?page=0&pageSize=100');
     const now = Date.now(), all = store('samples') || {}, names = store('names') || {}, live = store('live') || {};
+    const info = store('info') || {}, scheds = store('schedules') || {};
     for (const s of spas) {
       names[s._id] = `${s.modelType || 'Spa'} ${s.serialNumber}`;
+      info[s._id] = s;
       const state = await get(`/spas/${s._id}/current-state`);
       const c8z = await get(`/spas/${s._id}/current-c8z`).catch(() => null);
+      if (!schedAt[s._id] || now - schedAt[s._id] > SCHED_MS) {
+        const d = await get(`/spa-schedules/findBySpa/${s._id}`).catch(() => null);
+        if (d) { scheds[s._id] = d.schedules || []; schedAt[s._id] = now; }
+      }
       const x = SpaStats.compact(state, c8z, now), prev = (all[s._id] || []).at(-1);
       store('names', names);
-      if (prev && prev.online !== x.online) log(label(s._id), x.online ? 'de nouveau en ligne' : 'HORS LIGNE');
-      if (prev && prev.err !== x.err) log(label(s._id), `code erreur ${prev.err} -> ${x.err}`);
+      if (prev && prev.online !== x.online) log(label(s._id), x.online ? 'de nouveau en ligne' : 'HORS LIGNE', s._id);
+      if (prev && prev.err !== x.err) log(label(s._id), `code erreur ${prev.err} -> ${x.err}`, s._id);
       all[s._id] = [...(all[s._id] || []), x].filter(v => v.ts > now - KEEP_MS);
       live[s._id] = { ts: now, state, c8z };
     }
-    store('names', names); store('live', live);
+    store('names', names); store('live', live); store('info', info); store('schedules', scheds);
     try { store('samples', all); } catch (e) { log('app', 'localStorage plein, historique non enregistré'); }
     $('err').textContent = '';
   } catch (e) {
-    $('err').textContent = e.message;
+    $('err').textContent = 'Actualisation impossible (' + e.message + '). Les dernières données connues restent affichées.';
     if (!store('tokens') || /refresh|non connecté/.test(e.message)) show(false);
   }
   render();
@@ -88,23 +149,93 @@ async function poll() {
 // ---- Affichage ----
 const h = s => Math.floor(s / 3600) + ' h ' + Math.round(s % 3600 / 60) + ' min';
 const T = ts => new Date(ts).toLocaleString('fr-FR');
+const D = v => { const d = new Date(v); return isNaN(d) ? esc(v) : d.toLocaleDateString('fr-FR'); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+const C = v => v == null ? '—' : v.toFixed(1).replace('.', ',') + ' °C';
+const ago = m => m == null ? 'inconnu' : m < 1 ? 'à l\'instant' : m < 60 ? 'il y a ' + Math.round(m) + ' min' : m < 2880 ? 'il y a ' + Math.floor(m / 60) + ' h ' + Math.round(m % 60) + ' min' : 'il y a ' + Math.floor(m / 1440) + ' j';
+const V = { OFF: 'Éteint', ON: 'Allumé', HIGH: 'Fort', MEDIUM: 'Moyen', LOW: 'Doux', DISABLED: 'Désactivé' };
+const RANGE = { LOW: 'Basse', HIGH: 'Haute' };
+const val = v => v == null || v === '' ? '—' : esc(v);
+const status = ok => ok ? '<span class=status><span class=dot aria-hidden=true></span>En ligne</span>' : '<span class="status offl"><span class="dot off" aria-hidden=true></span>Hors ligne</span>';
+const ACTION = { ping: "Vérifier l'alimentation du spa et son Wi-Fi.", offline: "Vérifier l'alimentation du spa et son Wi-Fi.", error: 'Noter le code et contacter le revendeur.', clock: "Régler l'heure depuis le panneau du spa." };
+const route = () => { const m = /^#\/spa\/(.+)$/.exec(location.hash); return m ? decodeURIComponent(m[1]) : null; };
+const href = id => '#/spa/' + encodeURIComponent(id);
+// niveau d'eau : plage d'affichage 10-42 °C (shortcut: bornes fixes, suffisantes pour un spa)
+const pct = c => c == null ? 0 : Math.max(0, Math.min(100, (c - 10) / 32 * 100));
+const waterBar = (cur, set) => `<div class=water role=img aria-label="Eau ${esc(C(cur))}, consigne ${esc(C(set))}"><i style="width:${pct(cur)}%"></i><b style="left:calc(${pct(set)}% - 1.5px)"></b></div>`;
+const row = (k, v) => `<div class=row><dt>${k}</dt><dd>${v}</dd></div>`;
+const group = (t, rows) => `<section><h2>${t}</h2><dl class=list>${rows}</dl></section>`;
+
+function alertsHtml(live, info, now) {
+  const items = [];
+  for (const [id, l] of Object.entries(live)) SpaView.alerts(l.state, info[id], now, { maxPingMin: 60 }).forEach(a => items.push({ id, a }));
+  items.sort((x, y) => (x.a.level === 'critical' ? 0 : 1) - (y.a.level === 'critical' ? 0 : 1));
+  if (!items.length) return '<p class=ok>Aucune alerte : tout va bien.</p>';
+  return '<ul class=alerts>' + items.map(({ id, a }) => `<li class="alert ${a.level}"><span class=badge aria-hidden=true></span><div>
+    <strong>${a.level === 'critical' ? 'Critique' : 'Attention'} · <a href="${esc(href(id))}">${esc(label(id))}</a></strong><br>${esc(a.text)}<br>
+    ${ACTION[a.code] ? 'À faire : ' + esc(ACTION[a.code]) : 'À faire : ouvrir le détail du spa.'}</div></li>`).join('') + '</ul>';
+}
+
+function dashboard(live, info, all, now) {
+  const since = now - 7 * 864e5;
+  const cards = Object.entries(live).map(([id, { ts, state: x, c8z }]) => {
+    const t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, c8z);
+    const r = SpaStats.runtimes((all[id] || []).filter(v => v.ts > since), POLL_MS * 3);
+    return `<a class=card href="${esc(href(id))}" data-k="${esc(id)}">
+      <h3>${esc(label(id))}</h3>${status(x.online)}
+      <div class=temp>${esc(C(t.current))}</div>${waterBar(t.current, t.set)}
+      <div>Consigne ${esc(C(t.set))} · ${ht.active ? 'chauffe en cours' : 'pas de chauffe'}</div>
+      <div class=kv><span>Mode ${val(ht.mode)}</span><span>Heure du spa ${esc(c.text)}</span><span>Dernier signal ${esc(ago(p.ageMin))}</span></div>
+      <div class=kv><span>7 j : pompes ${h(r.runningS)}</span><span>chauffe ${h(r.heatingS)}</span><span>hors ligne ${h(r.offlineS)}</span></div></a>`;
+  }).join('');
+  return `<h2>Alertes</h2>${alertsHtml(live, info, now)}<h2>Mes spas</h2>` + (cards ? `<div class=grid>${cards}</div>` : '<p class=ok>Aucun relevé pour le moment : première actualisation en cours.</p>');
+}
+
+function detail(id, live, info, all, now) {
+  const l = live[id];
+  if (!l) return '<a class=back href="#/">‹ Tableau de bord</a><p class=ok>Spa inconnu ou pas encore relevé.</p>';
+  const x = l.state, t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, l.c8z), tc = SpaView.tech(x, info[id]);
+  const pl = {}; Object.entries(store('pumpLabels') || {}).forEach(([k, v]) => { if (k.startsWith(id + '|')) pl[k.slice(id.length + 1)] = v; });
+  const comps = SpaView.components(x, pl);
+  const scheds = SpaView.schedules((store('schedules') || {})[id]);
+  const mine = (store('events') || []).filter(e => e.id === id || (!e.id && (e.spa === label(id) || e.spa === (store('names') || {})[id])));
+  const alerts = SpaView.alerts(x, info[id], now, { maxPingMin: 60 });
+  const dev = new Date(now).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const ev = es => es.map(e => row(esc(T(e.ts)), esc(e.msg))).join('') || row('Aucun événement', '');
+  const errs = (x.statusMessages || []).map(m => row(esc(m.severity || 'Message'), esc(m.message))).join('');
+  return `<a class=back href="#/">‹ Tableau de bord</a>
+    <div class=sub>${status(x.online)} · relevé ${esc(T(l.ts))}</div>
+    <p><button data-act=rename-spa>Renommer ce spa</button></p>
+    ${alerts.length ? alertsHtml({ [id]: l }, info, now) : ''}
+    ${group('Température', row('Eau', `<b class=temp style="font-size:28px;margin:0">${esc(C(t.current))}</b>`) + row('Consigne', esc(C(t.set))) +
+      `<div class=row style="display:block">${waterBar(t.current, t.set)}</div>` +
+      row('Plage active', val(RANGE[t.rangeMode] || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`))}
+    ${group('Chauffage', row('Mode', val(ht.mode)) + row('Plage', val(RANGE[ht.range] || ht.range)) + row('Mode éco', ht.eco ? 'Oui' : 'Non') +
+      row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('État c8z', val(ht.c8zState)) + row('Statut c8z', val(ht.c8zStatus)))}
+    ${group('Pompes et lumières', comps.map(k => row(esc(k.label), `${k.on ? '<span class=status><span class=dot aria-hidden=true></span>' : '<span>'}${esc(V[k.value] || k.value || '—')}</${k.on ? 'span' : 'span'}>` +
+      `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
+    ${group('Heure', row('Heure du spa', esc(c.text)) + row('Format', c.military ? '24 h' : '12 h') + row("Heure de l'appareil", esc(dev)) +
+      row('Écart', c.driftMin == null ? '—' : c.driftMin + ' min'))}
+    ${c.drifted ? "<p class=note>Mise à jour automatique indisponible : l'API du portail ne permet pas de régler l'heure. Réglez-la depuis le panneau du spa.</p>" : ''}
+    ${group('Programmes (lecture seule)', scheds.map(s => row(`${esc(s.name)}${s.enabled ? '' : ' <small>(désactivé)</small>'}<br><small>${esc(s.time)} · ${esc(s.days.join(', '))}</small>`,
+      `${esc(C(SpaStats.toC(s.setTemp, x.celsius)))}<br>${val(s.heaterMode)}`)).join('') || row('Aucun programme relevé', ''))}
+    ${group('Informations techniques', row('Numéro de série', val(tc.serial)) + row('Modèle', val(tc.model)) + row('Constructeur', val(tc.oem)) + row('Revendeur', val(tc.dealer)) +
+      row('Firmware contrôleur', val(tc.firmware)) + row('Version passerelle', val(tc.gateway)) + row('Connectivité', x.online ? 'En ligne' : 'Hors ligne') +
+      row('Dernier signal', p.lastSeen ? `${esc(T(p.lastSeen))} (${esc(ago(p.ageMin))})` : '—') + row('Date de vente', tc.salesDate ? D(tc.salesDate) : '—') + row("Date d'enregistrement", tc.registrationDate ? D(tc.registrationDate) : '—'))}
+    ${group("Erreurs", row("Code d'erreur", tc.errorCode ? esc(tc.errorCode) : 'Aucun') + errs + ev(mine.filter(e => /code erreur/.test(e.msg))))}
+    ${group('Journal des événements', ev(mine))}
+    <p class=sub>Commandes indisponibles avec l'API du portail.</p>`;
+}
+
+let lastKey;
 function render() {
-  const live = store('live') || {}, all = store('samples') || {};
-  const deg = (v, celsius) => { const c = SpaStats.toC(v, celsius); return c === null ? '—' : c.toFixed(1) + ' °C'; };
-  $('spas').innerHTML = Object.entries(live).map(([id, { ts, state: x, c8z }]) => `<div class=card>
-    <h2>${esc(label(id))} <button class=rename data-id="${esc(id)}" title="Renommer">✎</button></h2>
-    <div class=${x.online ? 'on' : 'off'}>${x.online ? 'En ligne' : 'HORS LIGNE'}</div>
-    <p>Eau ${deg(x.currentTemp, x.celsius)} · consigne ${deg(x.desiredTemp, x.celsius)} · ${esc(x.heaterMode)} · chauffe ${esc(c8z?.c8zHeaterState)}</p>
-    <p>${(x.components || []).filter(c => c.value).map(c => esc(c.componentType + ': ' + c.value)).join(' · ')}</p>
-    <small>relevé ${T(ts)} · plage ${esc(x.tempRange)}, éco ${esc(x.ecoMode)}, filtration 2 ${esc(x.secondaryFiltrationMode)}</small></div>`).join('');
-  const since = Date.now() - 7 * 864e5;
-  $('stats').innerHTML = '<table>' + Object.entries(all).map(([id, a]) => {
-    const r = SpaStats.runtimes(a.filter(v => v.ts > since), POLL_MS * 3);
-    return `<tr><td>${esc(label(id))}</td><td>pompes ${h(r.runningS)}</td><td>avec chauffe ${h(r.heatingS)}</td><td>sans chauffe ${h(r.runningNoHeatS)}</td><td>hors ligne ${h(r.offlineS)}</td></tr>`;
-  }).join('') + '</table>';
-  $('events').innerHTML = (store('events') || []).map(e => `<tr><td>${T(e.ts)}</td><td>${esc(e.spa)}</td><td>${esc(e.msg)}</td></tr>`).join('') || '<tr><td>Aucun événement</td></tr>';
+  const live = store('live') || {}, all = store('samples') || {}, info = store('info') || {}, now = Date.now(), id = route();
+  const ae = document.activeElement, key = ae && ae.closest && ae.closest('#view') ? (ae.dataset.k || ae.dataset.act + (ae.dataset.key || '')) : null;
+  $('title').textContent = id && live[id] ? label(id) : 'Spa';
+  $('view').innerHTML = id ? detail(id, live, info, all, now) : dashboard(live, info, all, now);
+  if (key) { const n = [...document.querySelectorAll('#view [data-k],#view [data-act]')].find(e => (e.dataset.k || e.dataset.act + (e.dataset.key || '')) === key); if (n) n.focus(); }
   document.title = (Object.values(live).some(l => !l.state.online) ? '⚠ HORS LIGNE – ' : '') + 'Spa';
+  if (lastKey !== (id || '/')) { lastKey = id || '/'; window.scrollTo(0, 0); $('title').focus(); }
 }
 
 let timer;
@@ -113,17 +244,28 @@ function show(loggedIn) {
   clearInterval(timer);
   if (loggedIn) { render(); poll(); timer = setInterval(poll, POLL_MS); }
 }
+window.onhashchange = () => store('tokens') && render();
 $('login').onsubmit = async e => {
   e.preventDefault();
-  try { await post('/auth/login', { email: $('email').value, password: $('pwd').value }); $('pwd').value = ''; show(true); }
+  try { await post('/auth/login', { email: $('email').value, password: $('pwd').value }); $('pwd').value = ''; $('err').textContent = ''; show(true); }
   catch (er) { $('err').textContent = er.message; }
 };
-$('spas').onclick = e => {
-  const id = e.target.dataset.id; if (!id) return;
-  const n = prompt('Nom de ce spa (vide = nom par défaut)', label(id));
-  if (n === null) return;
-  const l = store('labels') || {}; n.trim() ? l[id] = n.trim() : delete l[id];
-  store('labels', l); render();
+$('view').onclick = e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = route();
+  if (b.dataset.act === 'rename-spa') {
+    const n = prompt('Nom de ce spa (vide = nom par défaut)', label(id));
+    if (n === null) return;
+    const l = store('labels') || {}; n.trim() ? l[id] = n.trim() : delete l[id];
+    store('labels', l);
+  } else {
+    const k = id + '|' + b.dataset.key, cur = (store('pumpLabels') || {})[k] || '';
+    const n = prompt('Nom de ce composant (vide = nom par défaut)', cur);
+    if (n === null) return;
+    const l = store('pumpLabels') || {}; n.trim() ? l[k] = n.trim() : delete l[k];
+    store('pumpLabels', l);
+  }
+  render();
 };
 $('logout').onclick = () => { localStorage.removeItem('spa.tokens'); show(false); };
 $('notif').onclick = () => window.Notification && Notification.requestPermission();
