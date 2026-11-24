@@ -62,9 +62,12 @@ var SpaView = (function () {
     if (toleranceMin == null) toleranceMin = 5;
     var h = state.hour, m = state.minute, military = !!state.military;
     var text = h == null || m == null ? '—' : military ? pad(h) + ':' + pad(m) : ((h % 12) || 12) + ':' + pad(m) + (h < 12 ? ' AM' : ' PM');
+    // L'API renvoie year/month/day = 0 : on compare seulement hh:mm (secondes de now ignorées, donc écart entier), sur le cercle de 24 h, dans ]-720, 720].
     var drift = null;
-    if (state.year != null && state.month != null && state.day != null && h != null && m != null) {
-      drift = Math.round((new Date(state.year, state.month - 1, state.day, h, m).getTime() - new Date(now).getTime()) / 60000);
+    if (typeof h === 'number' && typeof m === 'number' && isFinite(h) && isFinite(m)) {
+      var dn = new Date(now);
+      drift = (((h * 60 + m - (dn.getHours() * 60 + dn.getMinutes())) % 1440) + 1440) % 1440;
+      if (drift > 720) drift -= 1440;
     }
     var notSet = !!state.timeNotSet;
     return { text: text, military: military, notSet: notSet, driftMin: drift, drifted: notSet || (drift != null && Math.abs(drift) > toleranceMin) };

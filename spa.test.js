@@ -110,6 +110,19 @@ test('clock: heure ou minute manquante -> « — »; écart lisible', () => {
   assert.equal(V.alerts(t, {}, now).find(a => a.code === 'clock').text, "L'horloge du spa est en retard de 11 h 48 min : à corriger.");
 });
 
+test('clock: écart sur hh:mm seulement (date API = 0), cercle de 24 h', () => {
+  const n = new Date(2026, 10, 24, 16, 3, 54);
+  const mk = (h, m, o) => Object.assign({ hour: h, minute: m, year: 0, month: 0, day: 0, military: true, timeNotSet: false }, o);
+  let c = V.clock(mk(16, 2), n); assert.equal(c.driftMin, -1); assert.equal(c.drifted, false);
+  c = V.clock(mk(16, 13), n); assert.equal(c.driftMin, 10); assert.equal(c.drifted, true);
+  assert.equal(V.clock(mk(23, 59), new Date(2026, 10, 24, 0, 1)).driftMin, -2);
+  assert.equal(V.clock(mk(0, 1), new Date(2026, 10, 24, 23, 59)).driftMin, 2);
+  c = V.clock(mk(16, 2, { year: 2020, month: 3, day: 9 }), n); assert.equal(c.driftMin, -1); assert.equal(c.drifted, false);
+  c = V.clock({ military: true }, n); assert.equal(c.driftMin, null); assert.equal(c.drifted, false);
+  c = V.clock(mk(null, 'x'), n); assert.equal(c.driftMin, null); assert.equal(c.drifted, false);
+  c = V.clock(mk(16, 3, { timeNotSet: true }), n); assert.equal(c.drifted, true);
+});
+
 test('données partielles: éléments null et types de prototype ignorés', () => {
   const s = ok();
   s.components = [null, 'x', { componentType: 'constructor' }, { componentType: 'PUMP', port: 0, value: 'ON' }];
