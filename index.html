@@ -17,10 +17,10 @@
   small,.sub{font-size:15px;color:var(--text2)}
   a{color:var(--water)}
   :focus-visible{outline:3px solid var(--water);outline-offset:2px}
-  .btn,button,input{font:inherit;min-height:44px;border-radius:10px}
+  .btn,button,input,select{font:inherit;min-height:44px;border-radius:10px}
   .btn,button{padding:0 16px;border:1px solid var(--water);background:transparent;color:var(--water);cursor:pointer;display:inline-flex;align-items:center}
   button.primary{background:var(--water);color:var(--on-water)}
-  input{display:block;width:100%;padding:0 12px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin:4px 0 12px}
+  input,select{display:block;width:100%;padding:0 12px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin:4px 0 12px}
   label{font-weight:600}
   .back{display:inline-flex;align-items:center;min-height:44px;margin-left:-4px;padding:0 4px;text-decoration:none;font-weight:600}
   #err{margin:8px 0;padding:0}#err:not(:empty){padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-text)}
@@ -42,8 +42,9 @@
   .list{margin:0;background:var(--surface);border-radius:14px;border:1px solid var(--line)}
   .row{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:48px;padding:8px 16px;border-top:1px solid var(--line)}
   .row:first-child{border-top:0}
-  .row dt{margin:0}.row dd{margin:0;text-align:right;color:var(--text2);display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap}
+  .row dt{margin:0;flex:none;max-width:50%}.row dd{margin:0;flex:1;min-width:0;text-align:right;color:var(--text2);display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap}
   .row .btn{min-width:44px}
+  .row small{color:var(--text2)}
   .note{margin:8px 4px 0;padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-text);font-size:15px}
   ul.alerts{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px}
   .alert{display:flex;gap:12px;padding:12px 16px;border-radius:14px;align-items:flex-start}
@@ -57,6 +58,46 @@
   #login{background:var(--surface);border-radius:16px;padding:16px;border:1px solid var(--line);max-width:420px}
   [hidden]{display:none!important}
   h1:focus{outline:none}
+  button:disabled{opacity:.55;cursor:progress}
+  /* Interrupteur (role=switch) : piste + pastille + texte d'état, l'état ne repose jamais sur la couleur seule */
+  .sw{display:inline-flex;align-items:center;gap:10px;min-height:44px;min-width:44px;padding:0 4px;border:0;background:transparent;color:var(--text);border-radius:22px}
+  .sw .track{position:relative;flex:none;width:52px;height:32px;border-radius:16px;border:2px solid var(--text2);background:var(--surface)}
+  .sw .thumb{position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:var(--text2)}
+  .sw[aria-checked=true] .track{background:var(--water);border-color:var(--water)}
+  .sw[aria-checked=true] .thumb{left:22px;background:var(--on-water)}
+  .sw .swt{min-width:5.2em;text-align:right}
+  @media (prefers-reduced-motion:no-preference){.sw .thumb{transition:left .15s ease}}
+  .lvl{gap:8px}.lvl .nx{color:var(--text2);font-size:15px}
+  .hint{display:block;flex-basis:100%;color:var(--text2);font-size:15px;text-align:right}
+  .row.blk{display:block}.ctl{margin-top:8px}
+  .seg{display:flex;border:1px solid var(--water);border-radius:12px;overflow:hidden}
+  .seg button{flex:1;justify-content:center;text-align:center;border:0;border-radius:0;padding:0 6px;line-height:1.2}
+  .seg button+button{border-left:1px solid var(--water)}
+  .seg button[aria-pressed=true]{background:var(--water);color:var(--on-water);font-weight:700}
+  .seg button[aria-pressed=true]::before{content:'✓ '}
+  .stp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .stp .round{width:44px;padding:0;justify-content:center;font-size:24px;border-radius:22px}
+  .stp output{min-width:5.5em;text-align:center;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+  .badge-x{display:inline-block;font-size:13px;font-weight:600;padding:2px 8px;border-radius:8px;border:1px solid var(--warn-text);color:var(--warn-text);background:var(--warn-bg)}
+  .qa{position:relative;z-index:1;margin-top:12px;border-top:1px solid var(--line);padding-top:4px}
+  .qrow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;min-height:48px}
+  .qa>.btn{margin-top:4px}
+  .card{position:relative}.cardlink{color:inherit;text-decoration:none}.cardlink::after{content:'';position:absolute;inset:0;border-radius:16px}
+  .card:hover{border-color:var(--water)}
+  .toastbox{position:fixed;left:16px;right:16px;bottom:16px;max-width:560px;margin:0 auto;z-index:5;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.25);max-height:50vh;overflow:auto;padding:4px 4px 4px 16px;display:flex;gap:8px;align-items:flex-start}
+  .toastbox:not(.on){opacity:0;pointer-events:none;height:0;min-height:0;padding:0;border:0;overflow:hidden;box-shadow:none}
+  .toastbox>div{flex:1;padding:10px 0}
+  #toasterr:not(:empty){background:var(--crit-bg);color:var(--crit-text);padding:8px 12px;border-radius:10px;font-weight:600}
+  #toast[data-k=warn]:not(:empty){color:var(--warn-text);background:var(--warn-bg);padding:8px 12px;border-radius:10px}
+  dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);width:min(420px,calc(100vw - 32px));padding:20px}
+  dialog::backdrop{background:rgba(0,0,0,.5)}
+  dialog h2{font-size:20px;text-transform:none;letter-spacing:0;color:var(--text);margin:0 0 8px}
+  dialog ul{margin:8px 0;padding-left:20px}
+  .dact{display:grid;gap:8px;margin-top:16px}.dact button{justify-content:center}
+  .field{margin:8px 0}.field label{display:block;font-weight:600}
+  .expbox{flex-basis:100%}
+  body.hasToast main{padding-bottom:200px}
+  ::placeholder{color:var(--text2);opacity:1}
 </style>
 <main>
 <h1 id=title tabindex=-1>Spa</h1>
@@ -77,13 +118,19 @@
   <div class=foot>
     <button id=notif>Activer les notifications d'alerte</button>
     <button id=logout>Se déconnecter</button>
+    <div class=expbox><button class=sw id=exp role=switch aria-checked=false aria-label="Commandes expérimentales" aria-describedby=expd><span class=swt style="min-width:0">Commandes expérimentales : <span id=expt>désactivées</span></span><span class=track aria-hidden=true><span class=thumb></span></span></button>
+    <small id=expd>Réglages jamais vérifiés sur un vrai spa (format 12/24 h, cycle de filtration, heure). Désactivées par défaut.</small></div>
     <small>La déconnexion efface les jetons et les données du compte ; relevés, événements et noms restent sur cet appareil.</small>
   </div>
   <p><small>Les relevés ne sont faits que page ouverte. Garder cet onglet ouvert pour surveiller le spa.</small></p>
 </div>
 </main>
+<div class=toastbox id=toastbox><div><div id=toasterr role=alert></div><div id=toast role=status aria-live=polite></div></div><button id=toastx aria-label="Fermer le message">Fermer</button></div>
+<dialog id=dlg aria-labelledby=dlgt aria-describedby=dlgd><h2 id=dlgt></h2><p id=dlgd></p><ul id=dlgl aria-live=polite></ul>
+  <div class=dact><button class=primary id=dlgok></button><button id=dlgno autofocus>Annuler</button></div></dialog>
 
 <script src="stats.js"></script>
+<script src="commands.js"></script>
 <script src="spa.js"></script>
 <script>
 const API = 'https://iot.controlmyspa.com/web', POLL_MS = 60000, KEEP_MS = 14 * 864e5, SCHED_MS = 600000;
@@ -95,7 +142,7 @@ const store = (k, v) => v === undefined ? JSON.parse(localStorage.getItem('spa.'
 const own = (o, k) => o && typeof o === 'object' && Object.hasOwn(o, k) ? o[k] : undefined;
 const label = id => own(store('labels'), id) || own(store('names'), id) || id;
 
-// ---- API (lecture seule : seuls /auth/* utilisent POST) ----
+// ---- API : lectures (GET), connexion (POST /auth/*) et commandes (POST /spa-commands, seulement sur clic) ----
 // shortcut: corps/réponse de /auth/login et /auth/refresh supposés ({email,password} / {refreshToken} -> {data:{accessToken,refreshToken}}); à confirmer au premier essai.
 async function post(path, body) {
   const r = await fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -110,6 +157,17 @@ async function get(path, retry = true) {
   if (r.status === 401 && retry) { await post('/auth/refresh', { refreshToken: t.refresh }); return get(path, false); }
   if (!r.ok) throw new Error(`${path} -> ${r.status}`);
   return (await r.json()).data;
+}
+// Liste blanche : uniquement les routes de docs/API.md. req = {path, body} construit par SpaCmd.
+const CMD_PATHS = new Set(['/component-state', '/panel/state', '/temperature/value', '/temperature/heater-mode', '/temperature/range', '/temperature/scale', '/time', '/filter-cycles/schedule', '/filter-cycles/toggle-filter2-state']);
+async function command(req, retry = true) {
+  if (!req || !CMD_PATHS.has(req.path) || !req.body) throw new Error('Commande non autorisée.');
+  const t = store('tokens'); if (!t) throw new Error('non connecté');
+  const r = await fetch(`${API}/spa-commands${req.path}`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t.access }, body: JSON.stringify(req.body) });
+  if (r.status === 401 && retry) { await post('/auth/refresh', { refreshToken: t.refresh }); return command(req, false); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || j.message || `refusée par le portail (${r.status})`);
+  return j.data;
 }
 
 // ---- Relevés ----
@@ -156,19 +214,47 @@ async function poll() {
   }
   safeRender();
 }
+// Relecture ciblée d'UN spa après une commande (GET seulement).
+async function refreshSpa(id) {
+  const q = encodeURIComponent(id);
+  const state = await get(`/spas/${q}/current-state`), c8z = await get(`/spas/${q}/current-c8z`).catch(() => null);
+  const live = store('live') || {};
+  if (own(live, id)) { live[id] = { ts: Date.now(), state, c8z }; store('live', live); }
+  safeRender();
+}
+
+// ---- Journaux serveur (GET, mémoire seulement, jamais dans localStorage) ----
+const logs = Object.create(null);
+async function loadLog(id, kind, more) {
+  const L = logs[id] || (logs[id] = {}), S = L[kind] || (L[kind] = { items: [], page: 0, total: null, last: 0, err: null, busy: false, loaded: false });
+  if (S.busy) return;
+  S.busy = true; if (more) safeRender();
+  const page = more ? S.page + 1 : 0, route_ = kind === 'events' ? 'events' : 'fault-logs';
+  try {
+    const d = await get(`/${route_}/by-spa/${encodeURIComponent(id)}/historical?page=${page}&pageSize=20`);
+    const arr = Array.isArray(kind === 'events' ? d.events : d.faultLogs) ? (kind === 'events' ? d.events : d.faultLogs) : [];
+    S.items = more ? S.items.concat(arr) : arr; S.page = page; S.last = arr.length; S.loaded = true; S.err = null;
+    S.total = Number.isFinite(d.totalItems) ? d.totalItems : null;
+  } catch (e) { S.err = (/-> (\d+)/.exec(e.message) || [])[1] ? 'erreur ' + /-> (\d+)/.exec(e.message)[1] : 'réseau'; S.loaded = S.loaded || false; }
+  S.busy = false; safeRender();
+}
+const hasMore = S => S.loaded && S.last > 0 && (S.total != null ? S.items.length < S.total : S.last >= 20);
 
 // ---- Affichage ----
 const h = s => Math.floor(s / 3600) + ' h ' + Math.round(s % 3600 / 60) + ' min';
 const T = ts => new Date(ts).toLocaleString('fr-FR');
 const D = v => { const d = new Date(v); return isNaN(d) ? esc(v) : d.toLocaleDateString('fr-FR'); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+const tDate = v => v == null || v === '' ? '—' : isNaN(new Date(v)) ? esc(v) : esc(T(v));
 const C = v => v == null ? '—' : v.toFixed(1).replace('.', ',') + ' °C';
 const ago = m => m == null ? 'inconnu' : m < 1 ? 'à l\'instant' : m < 60 ? 'il y a ' + Math.round(m) + ' min' : m < 2880 ? 'il y a ' + Math.floor(m / 60) + ' h ' + Math.round(m % 60) + ' min' : 'il y a ' + Math.floor(m / 1440) + ' j';
-const V = { OFF: 'Éteint', ON: 'Allumé', HIGH: 'Fort', MEDIUM: 'Moyen', LOW: 'Doux', DISABLED: 'Désactivé' };
+const V = { OFF: 'Éteint', ON: 'Allumé', HIGH: 'Fort', MED: 'Moyen', MEDIUM: 'Moyen', LOW: 'Doux', DISABLED: 'Désactivé' };
 const RANGE = { LOW: 'Basse', HIGH: 'Haute' };
+const MODES = [['READY', 'Prêt'], ['REST', 'Repos'], ['READY_REST', 'Prêt en repos']];
+const MODE_TXT = { READY: "Prêt : garde l'eau à la consigne en permanence.", REST: 'Repos : chauffe surtout pendant les cycles de filtration.', READY_REST: "Prêt en repos : reste en repos, mais passe en Prêt quand une pompe est utilisée." };
 const val = v => v == null || v === '' ? '—' : esc(v);
 const status = ok => ok ? '<span class=status><span class=dot aria-hidden=true></span>En ligne</span>' : '<span class="status offl"><span class="dot off" aria-hidden=true></span>Hors ligne</span>';
-const ACTION = { ping: "Vérifier l'alimentation du spa et son Wi-Fi.", offline: "Vérifier l'alimentation du spa et son Wi-Fi.", error: 'Noter le code et contacter le revendeur.', clock: "Régler l'heure depuis le panneau du spa." };
+const ACTION = { ping: "Vérifier l'alimentation du spa et son Wi-Fi.", offline: "Vérifier l'alimentation du spa et son Wi-Fi.", error: 'Noter le code et contacter le revendeur.', clock: "Régler l'heure depuis le panneau du spa, ou depuis les commandes expérimentales." };
 const route = () => { const m = /^#\/spa\/(.+)$/.exec(location.hash); if (!m) return null; try { return decodeURIComponent(m[1]); } catch (e) { return null; } };
 const href = id => '#/spa/' + encodeURIComponent(id);
 // niveau d'eau : plage d'affichage 10-42 °C (shortcut: bornes fixes, suffisantes pour un spa)
@@ -176,6 +262,33 @@ const pct = c => c == null ? 0 : Math.max(0, Math.min(100, (c - 10) / 32 * 100))
 const waterBar = (cur, set) => `<div class=water role=img aria-label="Eau ${esc(C(cur))}, consigne ${esc(C(set))}"><i style="width:${pct(cur)}%"></i><b style="left:calc(${pct(set)}% - 1.5px)"></b></div>`;
 const row = (k, v) => `<div class=row><dt>${k}</dt><dd>${v}</dd></div>`;
 const group = (t, rows) => `<section><h2>${t}</h2><dl class=list>${rows}</dl></section>`;
+const pumpLabels = id => { const pl = {}; Object.entries(store('pumpLabels') || {}).forEach(([k, v]) => { if (k.startsWith(id + '|')) pl[k.slice(id.length + 1)] = v; }); return pl; };
+const experimental = () => store('experimental') === true;
+
+// ---- Commandes : état d'interface en mémoire (survit aux rendus, jamais stocké) ----
+const ui = { busy: Object.create(null), pend: Object.create(null), draft: Object.create(null), fc: Object.create(null), focus: null };
+const kk = (id, ck) => id + '|' + ck;
+const hint = k => ui.pend[k] ? `<small class=hint>${esc(ui.pend[k].text)}</small>` : '';
+const dat = (cmd, id, key) => `data-cmd=${cmd} data-id="${esc(id)}"` + (key == null ? '' : ` data-key="${esc(key)}"`);
+const busyAttr = b => b ? ' disabled aria-busy=true' : '';
+function sw(id, ck, lbl, on, cmd, key, onT = 'Allumé', offT = 'Éteint') {
+  const k = kk(id, ck), b = !!ui.busy[k];
+  return `<button class=sw role=switch aria-checked=${on ? 'true' : 'false'} aria-label="${esc(lbl)}" ${dat(cmd, id, key)}${busyAttr(b)}><span class=swt>${b ? 'Envoi…' : on ? onT : offT}</span><span class=track aria-hidden=true><span class=thumb></span></span></button>${hint(k)}`;
+}
+function compCtl(id, k) {
+  const c = SpaView.control(k.comp), ck = 'c:' + k.key;
+  if (!c) return `${k.on ? '<span class=status><span class=dot aria-hidden=true></span>' : '<span>'}${esc(V[k.value] || k.value || '—')}</span>`;
+  if (c.kind === 'switch') return sw(id, ck, k.label, k.on, 'comp', k.key);
+  let nx = ''; try { nx = SpaCmd.nextState(k.comp); } catch (e) { /* pas d'état suivant */ }
+  const b = !!ui.busy[kk(id, ck)], cur = V[k.value] || k.value || '—';
+  return `<button class="btn lvl" ${dat('next', id, k.key)} aria-label="${esc(`${k.label} : ${cur}. Passer à ${V[nx] || nx}`)}"${busyAttr(b)}><span>${b ? 'Envoi…' : esc(cur)}</span><span class=nx aria-hidden=true>→ ${esc(V[nx] || nx)}</span></button>${hint(kk(id, ck))}`;
+}
+function seg(id, ck, cmd, lbl, opts, cur) {
+  const b = !!ui.busy[kk(id, ck)];
+  return `<div class=seg role=group aria-label="${esc(lbl)}">${opts.map(([v, l]) => `<button ${dat(cmd, id, v)} aria-pressed=${cur === v}${busyAttr(b)}>${esc(l)}</button>`).join('')}</div>${hint(kk(id, ck))}`;
+}
+const isLocked = st => st.panelLock === true || /^LOCK/.test(String(st.panelLock));
+const filter2 = st => SpaView.components(st).filter(k => k.type === 'FILTER')[1];
 
 function alertsHtml(live, info, now) {
   const items = [];
@@ -192,69 +305,236 @@ function dashboard(live, info, all, now) {
   const cards = Object.entries(live).map(([id, { ts, state: x, c8z }]) => {
     const t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, c8z);
     const r = SpaStats.runtimes((own(all, id) || []).filter(v => v.ts > since), POLL_MS * 3);
-    return `<a class=card href="${esc(href(id))}" data-k="${esc(id)}">
-      <h3>${esc(label(id))}</h3>${status(x.online)}
+    const quick = SpaView.components(x, pumpLabels(id)).filter(k => (k.type === 'PUMP' || k.type === 'LIGHT') && SpaView.control(k.comp))
+      .map(k => `<div class=qrow><span>${esc(k.label)}</span>${compCtl(id, k)}</div>`).join('');
+    return `<section class=card aria-label="${esc(label(id))}">
+      <h3><a class=cardlink href="${esc(href(id))}" data-k="${esc(id)}">${esc(label(id))}</a></h3>${status(x.online)}
       <div class=temp>${esc(C(t.current))}</div>${waterBar(t.current, t.set)}
       <div>Consigne ${esc(C(t.set))} · ${ht.active ? 'chauffe en cours' : 'pas de chauffe'}</div>
       <div class=kv><span>Mode ${val(ht.mode)}</span><span>Heure du spa ${esc(c.text)}</span><span>Dernier signal ${esc(ago(p.ageMin))}</span></div>
-      <div class=kv><span>7 j : pompes ${h(r.runningS)}</span><span>chauffe ${h(r.heatingS)}</span><span>hors ligne ${h(r.offlineS)}</span></div></a>`;
+      <div class=kv><span>7 j : pompes ${h(r.runningS)}</span><span>chauffe ${h(r.heatingS)}</span><span>hors ligne ${h(r.offlineS)}</span></div>
+      <div class=qa>${x.online ? '' : '<small>Spa hors ligne : commandes indisponibles.</small>'}${quick}
+        <button class=btn ${dat('alloff', id)}${busyAttr(ui.busy[kk(id, 'alloff')])}>${ui.busy[kk(id, 'alloff')] ? 'Envoi…' : 'Tout éteindre'}</button>${hint(kk(id, 'alloff'))}</div></section>`;
   }).join('');
   return `<h2>Alertes</h2>${alertsHtml(live, info, now)}<h2>Mes spas</h2>` + (cards ? `<div class=grid>${cards}</div>` : '<p class=ok>Aucun relevé pour le moment : première actualisation en cours.</p>');
+}
+
+function tempCtl(id, t) {
+  const lo = t.rangeMode === 'LOW' ? t.range.lowMin : t.range.highMin, hi = t.rangeMode === 'LOW' ? t.range.lowMax : t.range.highMax;
+  const d = ui.draft[id], cur = d ?? t.set, k = kk(id, 'temp'), b = !!ui.busy[k];
+  if (cur == null) return '<p class=sub>Consigne inconnue.</p>';
+  return `<div class=stp><button class="btn round" ${dat('tdn', id)} aria-label="Baisser la consigne de 0,5 °C"${busyAttr(b || (lo != null && cur - .5 < lo - 1e-9))}>−</button>
+    <output aria-label="Consigne à appliquer">${esc(C(cur))}</output>
+    <button class="btn round" ${dat('tup', id)} aria-label="Monter la consigne de 0,5 °C"${busyAttr(b || (hi != null && cur + .5 > hi + 1e-9))}>+</button>
+    <button class=primary ${dat('tapply', id)}${busyAttr(b || d == null)}>${b ? 'Envoi…' : 'Appliquer'}</button></div>
+    <small>Plage ${esc((RANGE[t.rangeMode] || '').toLowerCase())} : ${esc(C(lo))} à ${esc(C(hi))}${d == null ? ' · modifiez la valeur puis appuyez sur Appliquer' : ''}</small>${hint(k)}`;
+}
+
+function logGroup(id, kind, title, fixed, mapRow, local) {
+  const S = (logs[id] || {})[kind];
+  let rows = fixed;
+  if (S && S.loaded) rows += S.items.map(mapRow).join('') || row('<small>Aucune entrée sur le serveur.</small>', '');
+  else if (!S || !S.err) rows += row('<small>Chargement du journal du serveur…</small>', '');
+  if (S && S.err) rows += row(`<small>Journal du serveur indisponible (${esc(S.err)}). Le relevé local reste affiché.</small>`, '');
+  if (S && hasMore(S)) rows += `<div class=row><button class=btn ${dat('more', id, kind)}${busyAttr(S.busy)}>${S.busy ? 'Chargement…' : 'Charger plus'}</button><small>${S.items.length}${S.total != null ? ' sur ' + S.total : ''} affichés</small></div>`;
+  return group(title, rows + row('<small>Relevé local (cet appareil)</small>', '') + local);
 }
 
 function detail(id, live, info, all, now) {
   const l = own(live, id);
   if (!l) return '<a class=back href="#/">‹ Tableau de bord</a><p class=ok>Spa introuvable (inconnu ou pas encore relevé).</p>';
   const x = l.state, inf = own(info, id), t = SpaView.temps(x), p = SpaView.ping(x, now, 60), c = SpaView.clock(x, now), ht = SpaView.heating(x, l.c8z), tc = SpaView.tech(x, inf);
-  const pl = {}; Object.entries(store('pumpLabels') || {}).forEach(([k, v]) => { if (k.startsWith(id + '|')) pl[k.slice(id.length + 1)] = v; });
-  const comps = SpaView.components(x, pl);
+  const comps = SpaView.components(x, pumpLabels(id));
   const scheds = SpaView.schedules(own(store('schedules'), id));
   const mine = (store('events') || []).filter(e => e.id === id || (!e.id && (e.spa === label(id) || e.spa === own(store('names'), id))));
   const alerts = SpaView.alerts(x, inf, now, { maxPingMin: 60 });
   const dev = new Date(now).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const ev = es => es.map(e => row(esc(T(e.ts)), esc(e.msg))).join('') || row('Aucun événement', '');
+  const ev = es => es.map(e => row(esc(T(e.ts)), esc(e.msg))).join('') || row('<small>Aucun événement local</small>', '');
   const errs = tc.messages.map(m => row(esc(m.severity || 'Message'), esc(m.message))).join('');
+  const f2 = filter2(x), fc = ui.fc[id] || {}, filters = comps.filter(k => k.type === 'FILTER');
+  const X = '<span class=badge-x>Expérimental, non vérifié</span>';
+  const expGroup = !experimental() ? '' : group('Commandes expérimentales',
+    row(`Format de l'heure<br>${X}`, `<span class=hint style="text-align:right">Actuel : ${c.military ? '24 h' : '12 h'}</span>`) +
+    `<div class="row blk"><div class=ctl>${seg(id, 'fmt', 'fmt', "Format de l'heure", [['12', '12 h'], ['24', '24 h']], c.military ? '24' : '12')}</div></div>` +
+    `<div class="row blk"><strong>Cycle de filtration</strong> ${X}${filters.length ? `
+      <div class=field>${filters.length > 1 ? `<label for=fcidx>Filtre</label><select id=fcidx data-draft=idx>${filters.map((k, i) => `<option value="${i}"${String(fc.idx || 0) === String(i) ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}</select>` : ''}
+      <label for=fcstart>Heure de début</label><input id=fcstart type=time data-draft=start value="${esc(fc.start || '')}">
+      <label for=fchours>Durée (heures)</label><input id=fchours type=text inputmode=decimal data-draft=hours placeholder="2 ou 1,5" value="${esc(fc.hours || '')}"></div>
+      <button class=btn ${dat('fcycle', id)}${busyAttr(ui.busy[kk(id, 'fcycle')])}>${ui.busy[kk(id, 'fcycle')] ? 'Envoi…' : 'Régler le cycle…'}</button>${hint(kk(id, 'fcycle'))}` : '<p class=sub>Aucun filtre relevé.</p>'}</div>` +
+    `<div class="row blk"><strong>Heure du spa</strong> ${X}<div class=ctl><button class=btn ${dat('settime', id)}${busyAttr(ui.busy[kk(id, 'time')])}>${ui.busy[kk(id, 'time')] ? 'Envoi…' : "Régler l'heure du spa sur celle de cet appareil…"}</button>${hint(kk(id, 'time'))}</div></div>`);
   return `<a class=back href="#/">‹ Tableau de bord</a>
     <div class=sub>${status(x.online)} · relevé ${esc(T(l.ts))}</div>
+    ${x.online ? '' : '<p class=note>Spa hors ligne : aucune commande n\'est envoyée tant qu\'il ne répond pas.</p>'}
     <p><button data-act=rename-spa>Renommer ce spa</button></p>
     ${alerts.length ? alertsHtml(Object.fromEntries([[id, l]]), info, now) : ''}
     ${group('Température', row('Eau', `<b class=temp style="font-size:28px;margin:0">${esc(C(t.current))}</b>`) + row('Consigne', esc(C(t.set))) +
       `<div class=row style="display:block">${waterBar(t.current, t.set)}</div>` +
-      row('Plage active', val(RANGE[t.rangeMode] || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`))}
-    ${group('Chauffage', row('Mode', val(ht.mode)) + row('Plage', val(RANGE[ht.range] || ht.range)) + row('Mode éco', ht.eco ? 'Oui' : 'Non') +
-      row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('État c8z', val(ht.c8zState)) + row('Statut c8z', val(ht.c8zStatus)))}
-    ${group('Pompes et lumières', comps.map(k => row(esc(k.label), `${k.on ? '<span class=status><span class=dot aria-hidden=true></span>' : '<span>'}${esc(V[k.value] || k.value || '—')}</${k.on ? 'span' : 'span'}>` +
+      row('Plage active', val(RANGE[t.rangeMode] || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`) +
+      `<div class="row blk"><strong>Nouvelle consigne</strong><div class=ctl>${tempCtl(id, t)}</div></div>`)}
+    ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(MODE_TXT[ht.mode] || 'Mode inconnu.')}</p></div>` +
+      `<div class="row blk"><strong>Plage de température</strong><div class=ctl>${seg(id, 'range', 'range', 'Plage de température', [['HIGH', 'Haute'], ['LOW', 'Basse']], ht.range)}</div></div>` +
+      row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('État c8z', val(ht.c8zState)) + row('Statut c8z', val(ht.c8zStatus)))}
+    ${group('Pompes et lumières', comps.map(k => row(esc(k.label), compCtl(id, k) +
       `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
+    ${group('Panneau et filtration', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé')) +
+      (f2 ? row('Cycle de filtration 2', sw(id, 'filter2', 'Cycle de filtration 2', f2.on, 'filter2', null, 'Activé', 'Désactivé')) : ''))}
+    ${expGroup}
     ${group('Heure', row('Heure du spa', esc(c.text)) + row('Format', c.military ? '24 h' : '12 h') + row("Heure de l'appareil", esc(dev)) +
       row('Écart', c.driftMin == null ? '—' : SpaView.driftText(c.driftMin)))}
-    ${c.drifted ? "<p class=note>Mise à jour automatique indisponible : l'API du portail ne permet pas de régler l'heure. Réglez-la depuis le panneau du spa.</p>" : ''}
+    ${c.drifted ? `<p class=note>Pas de correction automatique : réglez l'heure depuis le panneau du spa${experimental() ? ' ou avec la commande expérimentale ci-dessus.' : ', ou activez les commandes expérimentales (pied de page).'}</p>` : ''}
     ${group('Programmes (lecture seule)', scheds.map(s => row(`${esc(s.name)}${s.enabled ? '' : ' <small>(désactivé)</small>'}<br><small>${esc(s.time)} · ${esc(s.days.join(', '))}</small>`,
       `${esc(C(SpaStats.toC(s.setTemp, x.celsius)))}<br>${val(s.heaterMode)}`)).join('') || row('Aucun programme relevé', ''))}
     ${group('Informations techniques', row('Numéro de série', val(tc.serial)) + row('Modèle', val(tc.model)) + row('Constructeur', val(tc.oem)) + row('Revendeur', val(tc.dealer)) +
       row('Firmware contrôleur', val(tc.firmware)) + row('Version passerelle', val(tc.gateway)) + row('Connectivité', x.online ? 'En ligne' : 'Hors ligne') +
       row('Dernier signal', p.lastSeen ? `${esc(T(p.lastSeen))} (${esc(ago(p.ageMin))})` : '—') + row('Date de vente', tc.salesDate ? D(tc.salesDate) : '—') + row("Date d'enregistrement", tc.registrationDate ? D(tc.registrationDate) : '—'))}
-    ${group("Erreurs", row("Code d'erreur", tc.errorCode ? esc(tc.errorCode) : 'Aucun') + errs + ev(mine.filter(e => /code erreur/.test(e.msg))))}
-    ${group('Journal des événements', ev(mine))}
-    <p class=sub>Commandes indisponibles avec l'API du portail.</p>`;
+    ${logGroup(id, 'faults', "Journal des erreurs", row("Code d'erreur", tc.errorCode ? esc(tc.errorCode) : 'Aucun') + errs,
+      f => row(`${val(f.code)} · ${val(f.severity)}<br><small>${tDate(f.timestamp)}</small>`, esc(f.description ?? '')), ev(mine.filter(e => /code erreur/.test(e.msg))))}
+    ${logGroup(id, 'events', 'Journal des événements', '', e => row(tDate(e.date ?? e.eventOccuredTimestamp), esc(e.description ?? e.type ?? '')), ev(mine))}
+    <p class=sub>Une commande part seulement quand vous appuyez sur un bouton, et n'est considérée comme réussie que lorsque le spa a confirmé le nouvel état.</p>`;
 }
 
+const fkey = e => e && e.dataset && (e.dataset.k || e.dataset.act || e.dataset.cmd) ? [e.dataset.k, e.dataset.act, e.dataset.cmd, e.dataset.id, e.dataset.key].join('|') : null;
 let lastKey;
 function render() {
+  const ae = document.activeElement;
+  if (ae && ae.matches && ae.matches('#view input,#view select') && lastKey === (route() || '/')) return; // ne pas détruire un champ en cours de saisie
   // on ne garde que les relevés bien formés (state objet)
   const live = Object.fromEntries(Object.entries(store('live') || {}).filter(([, l]) => l && l.state && typeof l.state === 'object'));
   const all = store('samples') || {}, info = store('info') || {}, now = Date.now(), id = route();
-  const ae = document.activeElement, key = ae && ae.closest && ae.closest('#view') ? (ae.dataset.k || ae.dataset.act + (ae.dataset.key || '')) : null;
+  const inView = ae && ae.closest && ae.closest('#view'), key = inView ? fkey(ae) : (!ae || ae === document.body ? ui.focus : null);
   $('title').textContent = id && own(live, id) ? label(id) : 'Spa';
   $('view').innerHTML = id ? detail(id, live, info, all, now) : dashboard(live, info, all, now);
-  if (key) { const n = [...document.querySelectorAll('#view [data-k],#view [data-act]')].find(e => (e.dataset.k || e.dataset.act + (e.dataset.key || '')) === key); if (n) n.focus(); }
+  if (key) {
+    const n = [...document.querySelectorAll('#view [data-k],#view [data-act],#view [data-cmd]')].find(e => fkey(e) === key);
+    if (n && !n.disabled) { n.focus({ preventScroll: true }); ui.focus = null; }
+  }
   document.title = (Object.values(live).some(l => !l.state.online) ? '⚠ HORS LIGNE – ' : '') + 'Spa';
   if (lastKey !== (id || '/')) { lastKey = id || '/'; window.scrollTo(0, 0); $('title').focus(); }
+  if (id && own(live, id) && !logs[id]) { logs[id] = {}; loadLog(id, 'events'); loadLog(id, 'faults'); } // lecture seule, à l'ouverture du détail
 }
 
 // Un rendu qui échoue ne doit jamais empêcher les relevés : l'erreur va dans la zone d'erreur.
 function safeRender() {
   try { render(); } catch (e) { $('err').textContent = 'Affichage impossible (' + e.message + ').'; }
 }
+
+// ---- Retours (aria-live) et confirmations ----
+function toast(text, kind = 'info') {
+  if (kind === 'error') $('toasterr').textContent = 'Erreur : ' + text;
+  else { $('toast').textContent = (kind === 'warn' ? 'Attention : ' : '') + text; $('toast').dataset.k = kind; }
+  $('toastbox').classList.add('on'); document.body.classList.add('hasToast');
+}
+$('toastx').onclick = () => { $('toasterr').textContent = ''; $('toast').textContent = ''; $('toastbox').classList.remove('on'); document.body.classList.remove('hasToast'); };
+function ask({ title, text, items, ok }) {
+  return new Promise(res => {
+    $('dlgt').textContent = title; $('dlgd').textContent = text || '';
+    $('dlgl').innerHTML = (items || []).map(i => `<li>${esc(i)}</li>`).join('');
+    $('dlgok').textContent = ok; $('dlgok').hidden = false; $('dlgno').textContent = 'Annuler'; $('dlgno').disabled = false;
+    ask.res = res; $('dlg').showModal();
+  });
+}
+$('dlgok').onclick = () => { const r = ask.res; ask.res = null; r && r(true); };
+$('dlgno').onclick = () => $('dlg').close();
+$('dlg').onclose = () => { const r = ask.res; ask.res = null; r && r(false); safeRender(); };
+
+// Vérifie le spa puis renvoie son état courant ; null (et message) si on ne doit rien envoyer.
+function precheck(id) {
+  const l = own(store('live'), id), g = SpaCmd.guard(l && l.state);
+  if (!g.ok) { toast(`Commande non envoyée : ${g.reason}.`, 'error'); return null; }
+  return l.state;
+}
+// Après un envoi accepté : relire ce spa à ~2 s, ~6 s, ~10 s ; n'annoncer le succès que si l'état relu le confirme.
+function startConfirm(id, k, desc, expect, onOk) {
+  (ui.pend[k] || { timers: [] }).timers.forEach(clearTimeout);
+  const p = ui.pend[k] = { text: 'En attente de confirmation du spa…', timers: [] };
+  toast(`${desc} : envoyé. En attente de confirmation du spa…`, 'info'); safeRender();
+  const check = async final => {
+    try { await refreshSpa(id); } catch (e) { /* on réessaie au prochain palier */ }
+    if (ui.pend[k] !== p) return;
+    const l = own(store('live'), id), done = (msg, kind) => { p.timers.forEach(clearTimeout); delete ui.pend[k]; toast(msg, kind); safeRender(); };
+    if (l && expect(l.state)) { if (onOk) onOk(); done(`${desc} : confirmé par le spa.`, 'info'); }
+    else if (final) done(`${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`, 'warn');
+  };
+  p.timers = [setTimeout(() => check(false), 2000), setTimeout(() => check(false), 6000), setTimeout(() => check(true), 10000)];
+}
+// build(state) -> {req, desc, expect?, onOk?}. Une commande à la fois par composant (ck).
+async function run(id, ck, build) {
+  const k = kk(id, ck); if (ui.busy[k]) return;
+  const st = precheck(id); if (!st) return;
+  let b; try { b = build(st); } catch (e) { return toast(e.message, 'error'); }
+  $('toasterr').textContent = '';
+  ui.busy[k] = 1; safeRender();
+  try { await command(b.req); } catch (e) { delete ui.busy[k]; toast(`${b.desc} : ${e.message}`, 'error'); safeRender(); return; }
+  delete ui.busy[k];
+  if (b.expect) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk);
+  else { toast(`${b.desc} : envoyé. Ce réglage ne peut pas être relu ici : vérifiez-le sur le panneau du spa.`, 'warn'); safeRender(); }
+}
+const cmdComp = (s, id, key) => SpaView.components(s, pumpLabels(id)).find(x => x.key === key);
+async function allOff(id) {
+  const st = precheck(id), k = kk(id, 'alloff'); if (!st || ui.busy[k]) return;
+  const todo = SpaView.components(st, pumpLabels(id)).map(c => ({ c, req: SpaCmd.allOff(id, { components: [c.comp] })[0] })).filter(x => x.req);
+  if (!todo.length) return toast("Rien à éteindre : aucune pompe, lumière ou équipement de confort n'est allumé.", 'info');
+  if (!await ask({ title: 'Tout éteindre ?', text: `${label(id)} : ces équipements seront éteints. Filtration, circulation, ozone et chauffage ne sont pas touchés.`, items: todo.map(x => x.c.label), ok: 'Tout éteindre' })) return;
+  ui.busy[k] = 1; $('toasterr').textContent = ''; safeRender();
+  $('dlgok').hidden = true; $('dlgno').disabled = true; $('dlgno').textContent = 'Envoi…';
+  const li = [...$('dlgl').children], sent = [], failed = [];
+  for (let i = 0; i < todo.length; i++) { // en séquence, un résultat par composant
+    li[i].textContent = `${todo[i].c.label} : envoi…`;
+    try { await command(todo[i].req); li[i].textContent = `${todo[i].c.label} : envoyé`; sent.push(todo[i].c.key); }
+    catch (e) { li[i].textContent = `${todo[i].c.label} : échec (${e.message})`; failed.push(`${todo[i].c.label} (${e.message})`); }
+  }
+  delete ui.busy[k]; $('dlgno').disabled = false; $('dlgno').textContent = 'Fermer'; $('dlgno').focus();
+  if (sent.length) startConfirm(id, k, 'Tout éteindre', s => sent.every(key => { const c = SpaView.components(s).find(x => x.key === key); return c && !c.on; }));
+  else safeRender();
+  if (failed.length) toast(`Tout éteindre : ${failed.length} échec(s) : ${failed.join(' ; ')}`, 'error');
+}
+const expConfirm = (what, detailTxt) => ask({ title: 'Commande expérimentale', text: `${what} Cette commande n'a jamais été vérifiée sur un vrai spa. ${detailTxt || ''}`, items: [], ok: 'Envoyer' }).then(ok => { if (ok) $('dlg').close(); return ok; });
+
+async function doCmd(d) {
+  const id = d.id;
+  switch (d.cmd) {
+    case 'comp': case 'next': return run(id, 'c:' + d.key, s => {
+      const k = cmdComp(s, id, d.key); if (!k) throw new Error('Composant introuvable.');
+      const c = SpaView.control(k.comp), to = d.cmd === 'next' ? SpaCmd.nextState(k.comp) : k.on ? 'OFF' : c && c.onValue;
+      const req = SpaCmd.component(id, k.comp, to);
+      return { req, desc: `${k.label} → ${V[to] || to}`, expect: n => { const m = cmdComp(n, id, d.key); return !!m && m.value === req.body.state; } };
+    });
+    case 'tdn': case 'tup': { const l = own(store('live'), id); if (!l) return; const t = SpaView.temps(l.state); const cur = ui.draft[id] ?? t.set; if (cur == null) return; ui.draft[id] = cur + (d.cmd === 'tup' ? .5 : -.5); return safeRender(); }
+    case 'tapply': return run(id, 'temp', s => {
+      const c = ui.draft[id], req = SpaCmd.temperature(id, c, s);
+      return { req, desc: `Consigne ${C(c)}`, expect: n => { const v = SpaView.temps(n).set; return v != null && Math.abs(v - c) < .15; }, onOk: () => { delete ui.draft[id]; } };
+    });
+    case 'mode': case 'range': {
+      const l = own(store('live'), id); if (l && (d.cmd === 'mode' ? l.state.heaterMode : l.state.tempRange) === d.key) return;
+      return run(id, d.cmd, s => {
+        const req = d.cmd === 'mode' ? SpaCmd.heaterMode(id, d.key) : SpaCmd.range(id, d.key);
+        return { req, desc: d.cmd === 'mode' ? `Mode ${(MODES.find(m => m[0] === d.key) || [, d.key])[1]}` : `Plage ${RANGE[d.key]}`, expect: n => (d.cmd === 'mode' ? n.heaterMode : n.tempRange) === d.key };
+      });
+    }
+    case 'panel': return run(id, 'panel', s => { const to = !isLocked(s); return { req: SpaCmd.panel(id, to), desc: to ? 'Verrouillage du panneau' : 'Déverrouillage du panneau', expect: n => isLocked(n) === to }; });
+    case 'filter2': return run(id, 'filter2', s => { const f = filter2(s); if (!f) throw new Error('Cycle de filtration 2 absent.'); const to = !f.on; return { req: SpaCmd.filter2(id, to), desc: `Cycle de filtration 2 ${to ? 'activé' : 'désactivé'}`, expect: n => { const m = filter2(n); return !!m && m.on === to; } }; });
+    case 'alloff': return allOff(id);
+    case 'more': return loadLog(id, d.key, true);
+    case 'fmt': {
+      const l = own(store('live'), id); if (!l || !precheck(id)) return; const mil = d.key === '24'; if (!!l.state.military === mil) return;
+      if (!await expConfirm(`Passer l'affichage de l'heure du spa en ${d.key} h ?`, "L'heure actuelle du spa est renvoyée telle quelle.")) return;
+      return run(id, 'fmt', s => ({ req: SpaCmd.timeFormat(id, s, mil), desc: `Format ${d.key} h`, expect: n => !!n.military === mil }));
+    }
+    case 'fcycle': {
+      if (!precheck(id)) return; const fc = ui.fc[id] || {};
+      const hrs = Number(String(fc.hours || '').replace(',', '.') || NaN);
+      try { SpaCmd.filterCycle(id, SpaView.components(own(store('live'), id).state, pumpLabels(id)).filter(k => k.type === 'FILTER')[Number(fc.idx) || 0].comp, fc.start || '', hrs); } catch (e) { return toast(e.message, 'error'); }
+      if (!await expConfirm(`Régler le cycle de filtration : début ${fc.start}, durée ${fc.hours} h ?`, "La conversion de la durée est une hypothèse.")) return;
+      return run(id, 'fcycle', s => ({ req: SpaCmd.filterCycle(id, SpaView.components(s, pumpLabels(id)).filter(k => k.type === 'FILTER')[Number(fc.idx) || 0].comp, fc.start || '', hrs), desc: 'Cycle de filtration' }));
+    }
+    case 'settime': {
+      if (!precheck(id)) return; const n = new Date();
+      if (!await expConfirm(`Régler l'heure du spa sur ${n.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}, l'heure de cet appareil ?`, "Le format 12/24 h actuel est conservé.")) return;
+      return run(id, 'time', s => { const now = new Date(); return { req: SpaCmd.timeFormat(id, { hour: now.getHours(), minute: now.getMinutes() }, !!s.military), desc: "Heure du spa", expect: nw => !SpaView.clock(nw, Date.now()).drifted }; });
+    }
+  }
+}
+
 let timer;
 function show(loggedIn) {
   $('login').hidden = loggedIn; $('app').hidden = !loggedIn;
@@ -268,6 +548,8 @@ $('login').onsubmit = async e => {
   catch (er) { $('err').textContent = er.message; }
 };
 $('view').onclick = e => {
+  const c = e.target.closest('[data-cmd]');
+  if (c) { if (!c.disabled) { ui.focus = fkey(c); doCmd({ ...c.dataset }).catch(er => toast(er.message, 'error')); } return; }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const id = route();
   if (b.dataset.act === 'rename-spa') {
@@ -284,8 +566,12 @@ $('view').onclick = e => {
   }
   safeRender();
 };
+$('view').oninput = e => { const f = e.target.dataset.draft, id = route(); if (f && id) (ui.fc[id] || (ui.fc[id] = {}))[f] = e.target.value; };
 // Données du compte effacées ; relevés, événements et libellés (historique local) conservés.
 $('logout').onclick = () => { for (const k of ['tokens', 'info', 'live', 'schedules']) localStorage.removeItem('spa.' + k); show(false); };
 $('notif').onclick = () => window.Notification && Notification.requestPermission();
+const syncExp = () => { const on = experimental(); $('exp').setAttribute('aria-checked', on); $('expt').textContent = on ? 'activées' : 'désactivées'; };
+$('exp').onclick = () => { store('experimental', !experimental()); syncExp(); safeRender(); };
+syncExp();
 show(!!store('tokens'));
 </script>

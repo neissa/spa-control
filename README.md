@@ -11,11 +11,13 @@ Seuls les jetons sont gardés dans localStorage, pas le mot de passe.
 ## Limites
 - Les relevés (1/min) ne se font que **page ouverte** : l'alerte hors ligne et les stats ne couvrent que ces périodes.
 - Historique gardé 14 jours (localStorage ~5 Mo).
-- **Lecture seule** : le compte propriétaire n'a accès, via l'API du portail, à aucune commande (pompes, lumières, consigne, heure, filtration, mise à jour du firmware) ni aux journaux serveur (403/404). Le journal d'événements est celui relevé localement par la page. Pour piloter le spa, il faudrait relever les appels d'une autre interface (ex. l'application mobile officielle).
+- **Commandes jamais testées sur un vrai spa** : les requêtes viennent de la lecture du code du portail (voir `docs/API.md`). Rien ne part sans clic ; une commande n'est annoncée réussie que si l'état relu du spa la confirme (sinon « Le spa n'a pas encore confirmé »). Un spa hors ligne ne reçoit rien. Le compte propriétaire peut recevoir des 403 selon son rôle : le message de l'API est alors affiché.
+- Hypothèses à vérifier : champ `panelLock` de l'état (verrouillage du panneau), second filtre = deuxième composant `FILTER` (cycle de filtration 2).
 - Format du login/refresh, jours des programmes (0 = dimanche supposé) et définition de « chauffe » à vérifier au premier essai.
 
 ## Contenu
-- Tableau de bord : alertes (dernier ping > 1 h, hors ligne, erreur, horloge à corriger), températures, heure interne du spa.
-- Détail par spa : pompes et lumières (noms personnalisables), chauffage et C8Z, heure et format, programmes, informations techniques, erreurs, journal.
+- Tableau de bord : alertes (dernier ping > 1 h, hors ligne, erreur, horloge à corriger), températures, heure interne du spa, interrupteurs pompes et lumière par spa, « Tout éteindre » (confirmation, résultat par équipement ; filtration, circulation, ozone et chauffage ne sont jamais touchés).
+- Détail par spa : pompes, lumières et autres équipements (interrupteur ou bouton à niveaux, noms personnalisables), consigne (± 0,5 °C puis Appliquer), mode de chauffe (Prêt / Repos / Prêt en repos), plage Haute / Basse, verrouillage du panneau, cycle de filtration 2, heure et format, programmes, informations techniques, journaux d'erreurs et d'événements du serveur (20 par page, « Charger plus » ; lecture seule, non stockés) avec le relevé local en dessous.
+- Pied de page, **Commandes expérimentales** (désactivées par défaut) : format 12/24 h, cycle de filtration, réglage manuel de l'heure du spa sur celle de l'appareil. Étiquetées « Expérimental, non vérifié », chacune derrière une confirmation. Aucune correction d'heure automatique.
 
-`node --test` : tests des calculs de durées (`stats.js`) et de la logique de lecture (`spa.js`).
+`node --test` : tests des calculs de durées (`stats.js`), de la logique de lecture (`spa.js`) et des constructeurs de commandes (`commands.js`).

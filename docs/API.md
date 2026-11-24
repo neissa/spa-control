@@ -32,3 +32,11 @@ Toutes sous `/spa-commands`, corps JSON contenant toujours `spaId` et `via: "WEB
 | `/filter-cycles/toggle-filter2-state` | `state` | `ON`, `OFF` (active le cycle de filtration 2) |
 
 Le portail désactive les commandes quand le spa est hors ligne (`online=false`) ou quand `canControl` est faux (règle inconnue, sans doute rôle du compte). Une erreur renvoie `error.message`.
+
+## Utilisation dans l'interface (`index.html`)
+- `command(req)` envoie `POST /spa-commands{path}` (jeton Bearer, 401 -> refresh puis nouvel essai) pour les seuls chemins du tableau ci-dessus ; les corps sont construits par `SpaCmd` (`commands.js`). Jamais de commande hors clic. Message d'erreur affiché : `error.message` (ou `message`) de la réponse.
+- Après un envoi accepté : relecture de `current-state` et `current-c8z` de ce spa à ~2 s, ~6 s, ~10 s ; succès annoncé seulement si l'état relu correspond. `/temperature/scale` n'a pas d'écran.
+- Disponibles par défaut : `/component-state` (PUMP, LIGHT, BLOWER, MISTER, AUX, MICROSILK ; jamais circulation ni ozone), `/temperature/value`, `/temperature/heater-mode`, `/temperature/range`, `/panel/state` (`LOCK_PANEL` / `UNLOCK_PANEL` seulement), `/filter-cycles/toggle-filter2-state`.
+- Derrière « Commandes expérimentales » (`spa.experimental` dans localStorage) : `/time` (format 12/24 h et réglage manuel sur l'heure de l'appareil) et `/filter-cycles/schedule`.
+- Hypothèses de relecture : verrouillage = `state.panelLock` (booléen ou texte `LOCK_*`) ; filtre 2 = deuxième composant `FILTER`, actif si sa valeur n'est pas `OFF`. Le cycle de filtration n'est pas relisible : l'interface l'indique.
+- Journaux : `/events/by-spa/{id}/historical` et `/fault-logs/by-spa/{id}/historical` (`page`, `pageSize=20`, `totalItems`) lus à l'ouverture du détail et par « Charger plus » ; gardés en mémoire seulement. Une erreur (403 ...) laisse le relevé local affiché.

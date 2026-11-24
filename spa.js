@@ -22,12 +22,21 @@ var SpaView = (function () {
       var t = c.componentType, i = seen[t] = (seen[t] || 0) + 1;
       var key = t + ':' + (c.port != null ? c.port : i - 1);
       return {
-        key: key, type: t, kind: KIND[t] || 'other',
+        key: key, type: t, kind: KIND[t] || 'other', comp: c,
         label: labels[key] || NAMES[t] + (count[t] > 1 ? ' ' + i : ''),
         value: c.value == null ? null : c.value,
         on: !!c.value && c.value !== 'OFF' && c.value !== 'DISABLED'
       };
     });
+  }
+
+  // Contrôle proposé pour un composant : interrupteur (OFF + un état), bouton à niveaux (>= 3 états) ou rien. Même liste que SpaCmd.allOff + circulation exclue.
+  var PILOT = ['PUMP', 'LIGHT', 'BLOWER', 'MISTER', 'AUX', 'MICROSILK'];
+  function control(c) {
+    if (!c || PILOT.indexOf(c.componentType) < 0 || c.value === 'DISABLED') return null;
+    var av = (Array.isArray(c.availableValues) ? c.availableValues : []).filter(function (v) { return v !== 'DISABLED'; });
+    if (av.indexOf('OFF') < 0 || av.length < 2) return null;
+    return av.length === 2 ? { kind: 'switch', onValue: av.filter(function (v) { return v !== 'OFF'; })[0] } : { kind: 'cycle' };
   }
 
   function temps(state) {
@@ -110,6 +119,6 @@ var SpaView = (function () {
     return out;
   }
 
-  return { driftText: driftText, components: components, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
+  return { driftText: driftText, components: components, control: control, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;

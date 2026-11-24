@@ -121,3 +121,15 @@ test('données partielles: éléments null et types de prototype ignorés', () =
   assert.deepEqual(V.components(s), []);
   assert.deepEqual(V.alerts(s, {}, now), []);
 });
+
+test('control: interrupteur, niveaux, ou rien', () => {
+  assert.deepEqual(V.control({ componentType: 'LIGHT', value: 'OFF', availableValues: ['OFF', 'ON'] }), { kind: 'switch', onValue: 'ON' });
+  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'OFF', availableValues: ['OFF', 'HIGH', 'DISABLED'] }), { kind: 'switch', onValue: 'HIGH' });
+  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'LOW', availableValues: ['OFF', 'LOW', 'HIGH'] }), { kind: 'cycle' });
+  assert.equal(V.control({ componentType: 'OZONE', value: 'ON', availableValues: ['OFF', 'ON'] }), null);
+  assert.equal(V.control({ componentType: 'CIRCULATION_PUMP', value: 'ON', availableValues: ['OFF', 'ON'] }), null);
+  assert.equal(V.control({ componentType: 'PUMP', value: 'DISABLED', availableValues: ['OFF', 'ON'] }), null);
+  assert.equal(V.control({ componentType: 'PUMP', value: 'ON', availableValues: ['ON'] }), null);
+  assert.equal(V.control({ componentType: 'PUMP', value: 'ON' }), null);
+  assert.equal(V.control(null), null);
+});
