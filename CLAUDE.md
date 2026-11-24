@@ -1,0 +1,23 @@
+# spa-control
+
+Page web 100 % navigateur (index.html + stats.js, localStorage) qui remplace le portail Control My Spa. API non officielle : https://iot.controlmyspa.com/web. Détails dans README.md.
+
+## Règles du projet
+- Ne jamais lire, afficher ni committer `.env`, mots de passe ou jetons (le dépôt est public).
+- Pas de dépendance ni de build : garder index.html + stats.js. `npm test` doit passer.
+- Ne pas envoyer de commande d'écriture au spa (pompes, lumières, consigne) sans accord explicite de l'utilisateur.
+- Commits et push seulement sur demande.
+
+## Routage des modèles
+Choisir le modèle le moins cher qui fait correctement la tâche. Passer au niveau supérieur seulement si le résultat est faux ou ambigu.
+
+| Tâche | Modèle |
+|---|---|
+| Chercher/lire du code, répondre « où est X ? », résumer un fichier, git status/diff, retouche de texte ou de README | haiku, via l'agent `spa-scout` |
+| Ajouter/modifier une fonction dans index.html ou stats.js, écrire un test, corriger un bug local | sonnet (modèle par défaut de la session) |
+| Analyser une réponse d'API inconnue, définir une règle métier (ex. « chauffe », « hors ligne »), changer l'architecture, relire avant publication (sécurité, fuite de secrets, XSS) | opus, via l'agent `spa-reviewer` ou en changeant le modèle de session |
+
+Règles de bascule :
+- Un bug qui résiste à 2 essais avec sonnet passe à opus.
+- Toute modification touchant l'authentification, les jetons ou localStorage est relue par `spa-reviewer` avant le push.
+- Les recherches larges se font avec `spa-scout` pour ne pas remplir le contexte principal.
