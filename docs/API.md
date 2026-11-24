@@ -13,6 +13,8 @@ Essai pompe (24/11/2026, pompe 2 = `componentType:"jet"`, `deviceNumber:1`, `ava
 - **Arrêt** : `state:"OFF"` éteint les 3 pompes (confirmé en ~2 s, ~9 s pour la pompe 1), y compris la pompe 1 dont `availableValues` est seulement `LOW/HIGH` : l'absence de `OFF` dans la liste n'empêche pas l'arrêt.
 - **Verrouillage du panneau** : `UNLOCK_PANEL` fonctionne (HTTP 200, `panelLock` passe à `false` après ~9 s). `LOCK_PANEL` répond HTTP 200 mais `panelLock` est resté `false` plus d'une minute (2 envois) : le verrouillage à distance n'a pas pu être confirmé.
 - **Code d'erreur 38** (indication de l'utilisateur, cohérente avec les relevés) : « pas de filtration, donc pas de valeur de température » ; `currentTemp` vaut alors 0 ou une valeur absurde (262). Dès qu'une pompe a tourné : `errorCode:0`, plus de `statusMessages`, température lue. Ce n'est pas une panne.
+- **Consigne** (`/temperature/value`) : `value:51` puis `value:50.9` (spa en °C, plage LOW, consigne 50 °F) répondent HTTP 200 « set successfully » mais `desiredTemp` relu reste `50.00` après plusieurs rafraîchissements : **effet non observé**, cause inconnue (hypothèse non confirmée : le spa attend des demi-degrés Celsius exacts, mais 50,9 = 10,5 °C n'a pas fonctionné non plus). Le programme existant du spa enregistre `heaterTemp: 50.9`.
+- En mode `READY_REST` (« Ready in Rest »), la pompe 1 peut s'allumer seule : un équipement allumé ne prouve pas une utilisation humaine, et des pompes éteintes ne prouvent pas que le spa est libre.
 - `current-state` n'est rafraîchi par le serveur que toutes les ~30 s quand rien ne bouge : une confirmation peut attendre jusqu'à ~30 s.
 
 ## Lecture (GET, vérifiée)

@@ -7,7 +7,7 @@ Page web 100 % navigateur (index.html + stats.js, localStorage) qui remplace le 
 - Pas de dépendance ni de build : garder index.html + stats.js. `node --test` doit passer.
 - Ne pas envoyer de commande d'écriture au spa (pompes, lumières, consigne) sans accord explicite de l'utilisateur.
 - L'utilisateur a demandé de ne plus poser de questions de confirmation (« ne me demande plus, avance », 24/11/2026) : commiter et pousser la branche `feat/web-statique` sans demander, une fois tests et vérifications au vert. Jamais de push sur `main`, jamais de force push, aucune pull request sans demande.
-- Essais sur le vrai spa 57547-012603100009 : seulement réversibles, un équipement à la fois, état de départ rétabli et relevé ; jamais pendant que le spa semble utilisé (équipements allumés par quelqu'un d'autre) ; vérifier l'origine de l'onglet (https://controlmyspa.com) avant tout POST.
+- Essais sur le vrai spa 57547-012603100009 : seulement réversibles, un équipement à la fois, état de départ rétabli et relevé ; l'API ne permet PAS de savoir si quelqu'un utilise le spa (pompes éteintes ne prouve rien ; en mode Ready in Rest la pompe 1 s'allume seule) : ne jamais déclarer le spa « libre », ne tester que sur demande explicite de l'utilisateur qui confirme qu'il est libre, et s'arrêter si l'état change de lui-même pendant l'essai ; vérifier l'origine de l'onglet (https://controlmyspa.com) avant tout POST.
 
 ## Méthode de travail
 1. Avant toute action : écrire un plan court.
