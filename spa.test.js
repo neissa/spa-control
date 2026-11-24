@@ -164,3 +164,15 @@ test('control: interrupteur, niveaux, ou rien', () => {
   assert.equal(V.control({ componentType: 'PUMP', value: 'ON' }), null);
   assert.equal(V.control(null), null);
 });
+
+test('outcome: confirmé, autre niveau, inchangé', () => {
+  assert.deepEqual(V.outcome('OFF', 'HIGH', 'LOW'), { status: 'changed', actual: 'HIGH' }); // pompe : LOW demandé, HIGH obtenu
+  assert.deepEqual(V.outcome('LOW', 'HIGH', 'MED'), { status: 'changed', actual: 'HIGH' });
+  assert.deepEqual(V.outcome('HIGH', 'OFF', 'OFF'), { status: 'confirmed', actual: 'OFF' });
+  assert.deepEqual(V.outcome('OFF', 'HIGH', 'HIGH'), { status: 'confirmed', actual: 'HIGH' });
+  assert.equal(V.outcome('OFF', 'OFF', 'HIGH').status, 'unchanged'); // lumière : pas encore relue
+  assert.equal(V.outcome('OFF', 'OFF', 'LOW').status, 'unchanged');
+  assert.equal(V.outcome('HIGH', 'HIGH', 'OFF').status, 'unchanged');
+  for (const bad of [null, undefined, '']) { assert.equal(V.outcome('OFF', bad, 'HIGH').status, 'unchanged'); assert.equal(V.outcome(bad, 'HIGH', 'LOW').status, 'changed'); }
+  assert.equal(V.outcome(null, null, null).status, 'unchanged');
+});

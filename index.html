@@ -461,7 +461,8 @@ function precheck(id, maxMs) {
   return c.st;
 }
 // Après un envoi accepté : relire ce spa à ~2 s, ~6 s, ~10 s ; n'annoncer le succès que si l'état relu le confirme.
-function startConfirm(id, k, desc, expect, onOk, unreadable) {
+// judge(state, final) (commandes de composants) remplace expect : renvoie {msg, kind} quand le résultat est connu (confirmé ou autre niveau), sinon null ; la relecture s'arrête alors.
+function startConfirm(id, k, desc, expect, onOk, unreadable, judge) {
   (ui.pend[k] || { timers: [] }).timers.forEach(clearTimeout);
   const p = ui.pend[k] = { text: 'En attente de confirmation du spa…', timers: [] };
   toast(`${desc} : envoyé. En attente de confirmation du spa…`, 'info'); safeRender();
@@ -469,7 +470,10 @@ function startConfirm(id, k, desc, expect, onOk, unreadable) {
     try { await refreshSpa(id); } catch (e) { /* on réessaie au prochain palier */ }
     if (ui.pend[k] !== p) return;
     const l = own(store('live'), id), done = (msg, kind) => { p.timers.forEach(clearTimeout); delete ui.pend[k]; delete ui.lock[k]; toast(msg, kind); safeRender(); };
-    if (l && expect(l.state)) { if (onOk) onOk(); done(`${desc} : confirmé par le spa.`, 'info'); }
+    const j = l && judge ? judge(l.state, final) : null;
+    if (j) done(j.msg, j.kind);
+    else if (judge) { if (final) done(`${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`, 'warn'); }
+    else if (l && expect(l.state)) { if (onOk) onOk(); done(`${desc} : confirmé par le spa.`, 'info'); }
     else if (final) done(l && unreadable && unreadable(l.state) ? `${desc} : Non confirmable (heure du spa illisible). Vérifiez-la sur le panneau.` : `${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`, 'warn');
   };
   p.timers = [setTimeout(() => check(false), 2000), setTimeout(() => check(false), 6000), setTimeout(() => check(true), 10000)];
@@ -485,9 +489,20 @@ async function run(id, ck, build, maxMs) {
   ui.busy[k] = 1; if (lockable) ui.lock[k] = { id, what: b.desc }; safeRender();
   try { await command(b.req); } catch (e) { delete ui.busy[k]; delete ui.lock[k]; toast(`${b.desc} : ${e.message}`, 'error'); safeRender(); return; }
   delete ui.busy[k];
-  if (b.expect) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk, b.unreadable);
+  if (b.expect || b.judge) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk, b.unreadable, b.judge);
   else { delete ui.lock[k]; toast(`${b.desc} : envoyé. Ce réglage ne peut pas être relu ici : vérifiez-le sur le panneau du spa.`, 'warn'); safeRender(); }
 }
+const lv = x => own(V, x) || x;
+// Texte du résultat d'une commande de composant (null tant que la valeur relue n'a pas changé). `changed` = information neutre, pas une erreur.
+function outcomeText(label, o, target) {
+  if (o.status === 'confirmed') return `${label} : ${o.actual} (confirmé par le spa)`;
+  if (o.status === 'changed') return `${label} : ${o.actual} (niveau demandé : ${target}, le spa a choisi ${o.actual})`;
+  return null;
+}
+const compOutcome = (label, before, m, target) => {
+  const t = m && outcomeText(label, SpaView.outcome(before, m.value, target), target);
+  return t ? { msg: t, kind: 'info' } : null;
+};
 const cmdComp = (s, id, key) => SpaView.components(s, pumpLabels(id)).find(x => x.key === key);
 // Plan « Tout éteindre » : requêtes (composants identifiables) + sautés (jamais de commande sur un composant douteux).
 function allOffPlan(id, st) {
@@ -519,11 +534,20 @@ async function allOff(id) {
   const li = [...$('dlgl').children], sent = [], failed = [];
   for (let n = 0; n < todo.length; n++) { // en séquence, un résultat par composant
     li[n].textContent = `${todo[n].c.label} : envoi…`;
-    try { await command(todo[n].req); li[n].textContent = `${todo[n].c.label} : envoyé`; sent.push(todo[n].c.key); }
+    try { await command(todo[n].req); li[n].textContent = `${todo[n].c.label} : envoyé`; sent.push({ key: todo[n].c.key, label: todo[n].c.label, before: todo[n].c.value, li: li[n] }); }
     catch (e) { li[n].textContent = `${todo[n].c.label} : échec (${e.message})`; failed.push(`${todo[n].c.label} (${e.message})`); }
   }
   delete ui.busy[k]; $('dlgno').disabled = false; $('dlgno').textContent = 'Fermer'; $('dlgno').focus();
-  if (sent.length) startConfirm(id, k, 'Tout éteindre', s => sent.every(key => { const c = SpaView.components(s).find(x => x.key === key); return c && !c.on; }));
+  if (sent.length) startConfirm(id, k, 'Tout éteindre', null, null, null, (s, final) => {
+    const comps = SpaView.components(s), res = sent.map(x => {
+      const m = comps.find(c => c.key === x.key), o = SpaView.outcome(x.before, m && m.value, 'OFF');
+      return { x, text: m && outcomeText(x.label, o, 'OFF') };
+    });
+    res.forEach(r => { if (r.text) r.x.li.textContent = r.text; else if (final) r.x.li.textContent = `${r.x.label} : le spa n'a pas encore confirmé`; });
+    if (!final && res.some(r => !r.text)) return null;
+    const odd = res.filter(r => !r.text || !r.text.endsWith('(confirmé par le spa)')).map(r => r.text || `${r.x.label} : le spa n'a pas encore confirmé`);
+    return { msg: odd.length ? 'Tout éteindre : ' + odd.join(' ; ') : 'Tout éteindre : confirmé par le spa.', kind: res.some(r => !r.text) ? 'warn' : 'info' };
+  });
   else { delete ui.lock[k]; safeRender(); }
   if (failed.length) toast(`Tout éteindre : ${failed.length} échec(s) : ${failed.join(' ; ')}`, 'error');
 }
@@ -539,7 +563,7 @@ async function doCmd(d) {
       if (!k.control) throw new Error(`${k.label} : commande indisponible (composant non identifiable ou sans état Éteint).`);
       const c = k.control, to = d.cmd === 'next' ? SpaCmd.nextState(k.comp) : k.on ? 'OFF' : c.onValue;
       const req = SpaCmd.component(id, k.comp, to);
-      return { req, desc: `${k.label} → ${own(V, to) || to}`, expect: n => { const m = cmdComp(n, id, d.key); return !!m && m.value === req.body.state; } };
+      return { req, desc: `${k.label} → ${lv(to)}`, judge: n => compOutcome(k.label, k.value, cmdComp(n, id, d.key), req.body.state) };
     });
     case 'tdn': case 'tup': { const l = own(store('live'), id); if (!l) return; const t = SpaView.temps(l.state); const cur = ui.draft[id] ?? t.setF; if (cur == null) return; ui.draft[id] = cur + (d.cmd === 'tup' ? 1 : -1); return safeRender(); }
     case 'tapply': return run(id, 'temp', s => {

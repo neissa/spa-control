@@ -47,6 +47,13 @@ var SpaView = (function () {
     return av.length === 2 ? { kind: 'switch', onValue: av.filter(function (v) { return v !== 'OFF'; })[0] } : { kind: 'cycle' };
   }
 
+  // Résultat d'une commande de composant d'après la valeur relue : le spa peut choisir un autre niveau que demandé (pompe : LOW demandé, HIGH obtenu).
+  function outcome(before, after, target) {
+    if (typeof after !== 'string' || after === '') return { status: 'unchanged', actual: null };
+    if (after === target) return { status: 'confirmed', actual: after };
+    return after !== before ? { status: 'changed', actual: after } : { status: 'unchanged', actual: after };
+  }
+
   function temps(state) {
     var p = state.setupParams || {};
     return {
@@ -131,6 +138,6 @@ var SpaView = (function () {
     return out;
   }
 
-  return { toC: toC, toF: toF, driftText: driftText, components: components, control: control, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
+  return { toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;
