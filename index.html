@@ -6,9 +6,9 @@
 <style>
   /* Couleurs sémantiques ; ratios de contraste calculés (voir commit) : texte >= 6,5:1, eau >= 5,7:1, alertes >= 7:1 */
   :root{--bg:#eef3f6;--surface:#fff;--text:#10222d;--text2:#475966;--water:#046786;--on-water:#fff;--track:#d3e0e7;--line:#c9d6de;
-    --warn-bg:#fff1d6;--warn-text:#6b3b00;--crit-bg:#fde4e4;--crit-text:#9b1218}
+    --warn-bg:#fff1d6;--warn-text:#6b3b00;--crit-bg:#fde4e4;--crit-text:#9b1218;--info-bg:#e8edf1;--info-text:#263540}
   @media (prefers-color-scheme:dark){:root{--bg:#0b161d;--surface:#14242d;--text:#e8f2f6;--text2:#a3b8c3;--water:#5ccbea;--on-water:#05212b;--track:#2a414d;--line:#2f4752;
-    --warn-bg:#3a2b0d;--warn-text:#ffc870;--crit-bg:#40171a;--crit-text:#ffa3a3}}
+    --warn-bg:#3a2b0d;--warn-text:#ffc870;--crit-bg:#40171a;--crit-text:#ffa3a3;--info-bg:#24343d;--info-text:#dbe7ed}}
   *{box-sizing:border-box}
   body{font:17px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--text)}
   main{max-width:880px;margin:0 auto;padding:16px 16px 48px}
@@ -48,10 +48,10 @@
   .note{margin:8px 4px 0;padding:12px 16px;border-radius:12px;background:var(--warn-bg);color:var(--warn-text);font-size:15px}
   ul.alerts{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:8px}
   .alert{display:flex;gap:12px;padding:12px 16px;border-radius:14px;align-items:flex-start}
-  .alert.warning{background:var(--warn-bg);color:var(--warn-text)}.alert.critical{background:var(--crit-bg);color:var(--crit-text)}
+  .alert.info{background:var(--info-bg);color:var(--info-text);border:1px solid var(--line)}.alert.warning{background:var(--warn-bg);color:var(--warn-text)}.alert.critical{background:var(--crit-bg);color:var(--crit-text)}
   .alert a{color:inherit;font-weight:600}
   .badge{flex:none;width:20px;height:20px;margin-top:2px;background:currentColor}
-  .critical .badge{border-radius:50%}.warning .badge{clip-path:polygon(50% 0,100% 100%,0 100%)}
+  .critical .badge{border-radius:50%}.info .badge{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}.warning .badge{clip-path:polygon(50% 0,100% 100%,0 100%)}
   .ok{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 16px;color:var(--text2)}
   .foot{margin-top:24px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
   .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -254,12 +254,14 @@ const MODES = [['READY', 'Prêt'], ['REST', 'Repos'], ['READY_REST', 'Prêt en r
 const MODE_TXT = { READY: "Prêt : garde l'eau à la consigne en permanence.", REST: 'Repos : chauffe surtout pendant les cycles de filtration.', READY_REST: "Prêt en repos : reste en repos, mais passe en Prêt quand une pompe est utilisée." };
 const val = v => v == null || v === '' ? '—' : esc(v);
 const status = ok => ok ? '<span class=status><span class=dot aria-hidden=true></span>En ligne</span>' : '<span class="status offl"><span class="dot off" aria-hidden=true></span>Hors ligne</span>';
-const ACTION = { ping: "Vérifier l'alimentation du spa et son Wi-Fi.", offline: "Vérifier l'alimentation du spa et son Wi-Fi.", error: 'Noter le code et contacter le revendeur.', clock: "Régler l'heure depuis le panneau du spa, ou depuis les commandes expérimentales." };
+const ACTION = { ping: "Vérifier l'alimentation du spa et son Wi-Fi.", offline: "Vérifier l'alimentation du spa et son Wi-Fi.", nofilter: 'Allumer une pompe un instant : la température sera lue ensuite.', error: 'Noter le code et contacter le revendeur.', clock: "Régler l'heure depuis le panneau du spa, ou depuis les commandes expérimentales." };
 const route = () => { const m = /^#\/spa\/(.+)$/.exec(location.hash); if (!m) return null; try { return decodeURIComponent(m[1]); } catch (e) { return null; } };
 const href = id => '#/spa/' + encodeURIComponent(id);
 // niveau d'eau : plage d'affichage 10-42 °C (shortcut: bornes fixes, suffisantes pour un spa)
 const pct = c => c == null ? 0 : Math.max(0, Math.min(100, (c - 10) / 32 * 100));
 const waterBar = (cur, set) => `<div class=water role=img aria-label="Eau ${esc(C(cur))}, consigne ${esc(C(set))}"><i style="width:${pct(cur)}%"></i><b style="left:calc(${pct(set)}% - 1.5px)"></b></div>`;
+// Code 38 : pas de filtration, donc pas de température (précision en texte, pas seulement la couleur)
+const noFilt = (x, t) => t.current == null && Number(x.errorCode) === 38 ? ' <small>pas de filtration</small>' : '';
 const row = (k, v) => `<div class=row><dt>${k}</dt><dd>${v}</dd></div>`;
 const group = (t, rows) => `<section><h2>${t}</h2><dl class=list>${rows}</dl></section>`;
 const pumpLabels = id => { const pl = {}; Object.entries(store('pumpLabels') || {}).forEach(([k, v]) => { if (k.startsWith(id + '|')) pl[k.slice(id.length + 1)] = v; }); return pl; };
@@ -298,10 +300,11 @@ const filter2Ok = st => { const f = filter2(st); return f && f.value !== 'DISABL
 function alertsHtml(live, info, now) {
   const items = [];
   for (const [id, l] of Object.entries(live)) SpaView.alerts(l.state, own(info, id), now, { maxPingMin: 60 }).forEach(a => items.push({ id, a }));
-  items.sort((x, y) => (x.a.level === 'critical' ? 0 : 1) - (y.a.level === 'critical' ? 0 : 1));
+  const rank = l => l === 'critical' ? 0 : l === 'warning' ? 1 : 2;
+  items.sort((x, y) => rank(x.a.level) - rank(y.a.level));
   if (!items.length) return '<p class=ok>Aucune alerte : tout va bien.</p>';
   return '<ul class=alerts>' + items.map(({ id, a }) => `<li class="alert ${a.level}"><span class=badge aria-hidden=true></span><div>
-    <strong>${a.level === 'critical' ? 'Critique' : 'Attention'} · <a href="${esc(href(id))}">${esc(label(id))}</a></strong><br>${esc(a.text)}<br>
+    <strong>${a.level === 'critical' ? 'Critique' : a.level === 'info' ? 'Information' : 'Attention'} · <a href="${esc(href(id))}">${esc(label(id))}</a></strong><br>${esc(a.text)}<br>
     ${own(ACTION, a.code) ? 'À faire : ' + esc(own(ACTION, a.code)) : 'À faire : ouvrir le détail du spa.'}</div></li>`).join('') + '</ul>';
 }
 
@@ -314,7 +317,7 @@ function dashboard(live, info, all, now) {
       .map(k => `<div class=qrow><span>${esc(k.label)}</span>${compCtl(id, k)}</div>`).join('');
     return `<section class=card aria-label="${esc(label(id))}">
       <h3><a class=cardlink href="${esc(href(id))}" data-k="${esc(id)}">${esc(label(id))}</a></h3>${status(x.online)}
-      <div class=temp>${esc(C(t.current))}</div>${waterBar(t.current, t.set)}
+      <div class=temp>${esc(C(t.current))}${noFilt(x, t)}</div>${waterBar(t.current, t.set)}
       <div>Consigne ${esc(C(t.set))} · ${ht.active ? 'chauffe en cours' : 'pas de chauffe'}</div>
       <div class=kv><span>Mode ${val(ht.mode)}</span><span>Heure du spa ${esc(c.text)}</span><span>Dernier signal ${esc(ago(p.ageMin))}</span></div>
       <div class=kv><span>7 j : pompes ${h(r.runningS)}</span><span>chauffe ${h(r.heatingS)}</span><span>hors ligne ${h(r.offlineS)}</span></div>
@@ -375,7 +378,7 @@ function detail(id, live, info, all, now) {
     ${x.online ? '' : '<p class=note>Spa hors ligne : aucune commande n\'est envoyée tant qu\'il ne répond pas.</p>'}
     <p><button data-act=rename-spa>Renommer ce spa</button></p>
     ${alerts.length ? alertsHtml(Object.fromEntries([[id, l]]), info, now) : ''}
-    ${group('Température', row('Eau', `<b class=temp style="font-size:28px;margin:0">${esc(C(t.current))}</b>`) + row('Consigne', esc(C(t.set))) +
+    ${group('Température', row('Eau', `<b class=temp style="font-size:28px;margin:0">${esc(C(t.current))}${noFilt(x, t)}</b>`) + row('Consigne', esc(C(t.set))) +
       `<div class=row style="display:block">${waterBar(t.current, t.set)}</div>` +
       row('Plage active', val(own(RANGE, t.rangeMode) || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`) +
       `<div class="row blk"><strong>Nouvelle consigne</strong><div class=ctl>${tempCtl(id, t)}</div></div>`)}
@@ -384,7 +387,7 @@ function detail(id, live, info, all, now) {
       row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('État c8z', val(ht.c8zState)) + row('Statut c8z', val(ht.c8zStatus)))}
     ${group('Pompes et lumières', comps.map(k => row(esc(k.label), compCtl(id, k) +
       `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
-    ${hasPanelLock(x) ? group('Panneau', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé'))) : ''}
+    ${hasPanelLock(x) ? group('Panneau', row('Verrouillage du panneau', sw(id, 'panel', 'Verrouillage du panneau', isLocked(x), 'panel', null, 'Verrouillé', 'Déverrouillé') + (isLocked(x) ? '' : "<small class=hint>Le verrouillage à distance n'a pas pu être confirmé lors des essais (le déverrouillage fonctionne). Vérifiez sur le panneau.</small>"))) : ''}
     ${expGroup}
     ${group('Heure', row('Heure du spa', esc(c.text)) + row('Format', c.military ? '24 h' : '12 h') + row("Heure de l'appareil", esc(dev)) +
       row('Écart', c.driftMin == null ? '—' : SpaView.driftText(c.driftMin)))}
@@ -460,23 +463,25 @@ function precheck(id, maxMs) {
   if (c.err) { toast(c.err, 'error'); return null; }
   return c.st;
 }
-// Après un envoi accepté : relire ce spa à ~2 s, ~6 s, ~10 s ; n'annoncer le succès que si l'état relu le confirme.
+// Après un envoi accepté : relire ce spa à 2, 6, 10 s (composants : 2, 4, 7, 10, 15, 20 s ; panneau : toutes les 3 s jusqu'à 45 s) ; n'annoncer le succès que si l'état relu le confirme.
 // judge(state, final) (commandes de composants) remplace expect : renvoie {msg, kind} quand le résultat est connu (confirmé ou autre niveau), sinon null ; la relecture s'arrête alors.
-function startConfirm(id, k, desc, expect, onOk, unreadable, judge) {
+// opt = {delays (s), wait (texte d'attente), fail (message si non confirmé à la fin)}. Défaut : composants 2,4,7,10,15,20 s ; autres 2,6,10 s.
+function startConfirm(id, k, desc, expect, onOk, unreadable, judge, opt = {}) {
   (ui.pend[k] || { timers: [] }).timers.forEach(clearTimeout);
-  const p = ui.pend[k] = { text: 'En attente de confirmation du spa…', timers: [] };
-  toast(`${desc} : envoyé. En attente de confirmation du spa…`, 'info'); safeRender();
+  const wait = opt.wait || 'En attente de confirmation du spa…', p = ui.pend[k] = { text: wait, timers: [] };
+  toast(`${desc} : envoyé. ${wait}`, 'info'); safeRender();
   const check = async final => {
     try { await refreshSpa(id); } catch (e) { /* on réessaie au prochain palier */ }
     if (ui.pend[k] !== p) return;
     const l = own(store('live'), id), done = (msg, kind) => { p.timers.forEach(clearTimeout); delete ui.pend[k]; delete ui.lock[k]; toast(msg, kind); safeRender(); };
     const j = l && judge ? judge(l.state, final) : null;
     if (j) done(j.msg, j.kind);
-    else if (judge) { if (final) done(`${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`, 'warn'); }
+    else if (judge) { if (final) done(opt.fail || `${desc} : Réessayez : le spa n'a pas réagi.`, 'warn'); }
     else if (l && expect(l.state)) { if (onOk) onOk(); done(`${desc} : confirmé par le spa.`, 'info'); }
-    else if (final) done(l && unreadable && unreadable(l.state) ? `${desc} : Non confirmable (heure du spa illisible). Vérifiez-la sur le panneau.` : `${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`, 'warn');
+    else if (final) done(opt.fail || (l && unreadable && unreadable(l.state) ? `${desc} : Non confirmable (heure du spa illisible). Vérifiez-la sur le panneau.` : `${desc} : le spa n'a pas encore confirmé. Vérifiez l'état affiché.`), 'warn');
   };
-  p.timers = [setTimeout(() => check(false), 2000), setTimeout(() => check(false), 6000), setTimeout(() => check(true), 10000)];
+  const delays = opt.delays || (judge ? [2, 4, 7, 10, 15, 20] : [2, 6, 10]);
+  p.timers = delays.map((s, i) => setTimeout(() => check(i === delays.length - 1), s * 1000));
 }
 // build(state) -> {req, desc, expect?, onOk?}. Une commande à la fois par composant (ck).
 async function run(id, ck, build, maxMs) {
@@ -489,7 +494,7 @@ async function run(id, ck, build, maxMs) {
   ui.busy[k] = 1; if (lockable) ui.lock[k] = { id, what: b.desc }; safeRender();
   try { await command(b.req); } catch (e) { delete ui.busy[k]; delete ui.lock[k]; toast(`${b.desc} : ${e.message}`, 'error'); safeRender(); return; }
   delete ui.busy[k];
-  if (b.expect || b.judge) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk, b.unreadable, b.judge);
+  if (b.expect || b.judge) startConfirm(id, k, b.desc + (b.req.unverified ? ' (expérimental)' : ''), b.expect, b.onOk, b.unreadable, b.judge, b.opt);
   else { delete ui.lock[k]; toast(`${b.desc} : envoyé. Ce réglage ne peut pas être relu ici : vérifiez-le sur le panneau du spa.`, 'warn'); safeRender(); }
 }
 const lv = x => own(V, x) || x;
@@ -577,7 +582,9 @@ async function doCmd(d) {
         return { req, desc: d.cmd === 'mode' ? `Mode ${(MODES.find(m => m[0] === d.key) || [, d.key])[1]}` : `Plage ${own(RANGE, d.key) || d.key}`, expect: n => (d.cmd === 'mode' ? n.heaterMode : n.tempRange) === d.key };
       });
     }
-    case 'panel': return run(id, 'panel', s => { if (!hasPanelLock(s)) throw new Error('Verrouillage du panneau indisponible : le spa ne le signale pas.'); const to = !isLocked(s); return { req: SpaCmd.panel(id, to), desc: to ? 'Verrouillage du panneau' : 'Déverrouillage du panneau', expect: n => isLocked(n) === to }; });
+    case 'panel': return run(id, 'panel', s => { if (!hasPanelLock(s)) throw new Error('Verrouillage du panneau indisponible : le spa ne le signale pas.'); const to = !isLocked(s); return { req: SpaCmd.panel(id, to), desc: to ? 'Verrouillage du panneau' : 'Déverrouillage du panneau', expect: n => isLocked(n) === to,
+      // Le serveur ne rafraîchit l'état que toutes les ~30 s : ne pas conclure à l'échec avant 45 s.
+      opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre.", fail: to ? 'Verrouillage non confirmé par le spa' : undefined } }; });
     case 'filter2': {
       if (!expOn()) return;
       if (!await expConfirm("Activer ou désactiver le cycle de filtration 2 ?", "La relecture de son état (2e filtre actif ou non) est une hypothèse.")) return;
