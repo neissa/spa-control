@@ -118,11 +118,65 @@ var SpaView = (function () {
     return (list || []).map(function (s) {
       var st = s.settings || {}, v = s.values || {};
       return {
-        id: s._id, name: s.name, enabled: !!s.enabled, time: pad(st.hour || 0) + ':' + pad(st.minute || 0),
+        id: s._id, name: s.name, hour: st.hour || 0, minute: st.minute || 0, dayNums: (st.days || []).filter(function (d) { return typeof d === 'number'; }),
+         enabled: !!s.enabled, time: pad(st.hour || 0) + ':' + pad(st.minute || 0),
         days: (st.days || []).map(function (d) { return typeof d === 'number' ? DAYS[d] : d; }),
         timeZone: st.timeZone == null ? null : st.timeZone, setTemp: v.heaterTemp, heaterMode: v.heaterMode, tempRange: v.tempRange
       };
     }).sort(function (a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+  }
+
+  // Durée en minutes -> « 1 h », « 1 h 30 », « 45 min ».
+  function durationText(m) {
+    m = m == null || m === '' ? NaN : Math.round(Number(m));
+    if (!isFinite(m) || m < 0) return null;
+    var hh = Math.floor(m / 60), mm = m % 60;
+    return hh ? hh + ' h' + (mm ? ' ' + pad(mm) : '') : mm + ' min';
+  }
+  // Cycles de filtration (composants FILTER) : état, début HH:MM, durée. Un cycle DISABLED n'a ni heure ni durée.
+  function filterCycles(state) {
+    return objs(state && state.components).filter(function (c) { return c.componentType === 'FILTER'; }).map(function (c, i) {
+      var disabled = c.value === 'DISABLED', ok = !disabled && Number.isInteger(c.hour) && Number.isInteger(c.minute);
+      return {
+        index: i + 1, label: 'Cycle ' + (i + 1), value: c.value == null ? null : c.value, disabled: disabled, on: !!c.value && c.value !== 'OFF' && !disabled,
+        start: ok ? pad(c.hour) + ':' + pad(c.minute) : null, minutes: disabled || c.durationMinutes == null ? null : Number(c.durationMinutes),
+        duration: disabled ? null : durationText(c.durationMinutes)
+      };
+    });
+  }
+  var C8Z = { C8Z_STATUS_CONNECTED: 'connecté', C8Z_STATUS_NOT_PRESENT: 'non présent' };
+  function c8zText(status) { return status == null ? null : Object.hasOwn(C8Z, status) ? C8Z[status] : String(status); }
+
+  // Verrouillage de la consigne : null si la clé est absente, sinon booléen.
+  function tempLock(state) {
+    if (!state || !Object.hasOwn(state, 'tempLock') || state.tempLock == null) return null;
+    return state.tempLock === true || /^LOCK/.test(String(state.tempLock));
+  }
+
+  // Date dont les champs locaux (heure/minute) valent l'heure murale de `now` dans le fuseau tz (sinon : celle de l'appareil).
+  function zoned(now, tz) {
+    var d = new Date(now);
+    if (!tz) return d;
+    try {
+      var p = {};
+      new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).formatToParts(d).forEach(function (x) { p[x.type] = Number(x.value); });
+      return isFinite(p.hour) && isFinite(p.minute) ? new Date(2000, 0, 1, p.hour, p.minute) : d;
+    } catch (e) { return d; }
+  }
+
+  // Décision pure de correction automatique de l'heure : null ou {time:'HH:MM', military, driftMin}.
+  // o = {state, stateTs, now, enabled, lastAttempt, failures, timeZone}. Garde-fous : activée, en ligne, état < 90 s, écart > 5 min (ou horloge non réglée),
+  // pas d'essai depuis 30 min, moins de 2 échecs consécutifs.
+  function autoTimeDecision(o) {
+    var st = o && o.state;
+    if (!o || !o.enabled || !st || !st.online) return null;
+    var now = new Date(o.now).getTime();
+    if (!(now - o.stateTs <= 90000)) return null;
+    if ((o.failures || 0) >= 2) return null;
+    if (o.lastAttempt != null && now - o.lastAttempt < 30 * 60000) return null;
+    var z = zoned(now, o.timeZone), c = clock(st, z, 5);
+    if (!(c.notSet || (c.driftMin != null && Math.abs(c.driftMin) > 5))) return null;
+    return { time: pad(z.getHours()) + ':' + pad(z.getMinutes()), military: c.military, driftMin: c.driftMin };
   }
 
   function alerts(state, spaInfo, now, opts) {
@@ -149,6 +203,6 @@ var SpaView = (function () {
     return 'code erreur ' + a + ' -> ' + b;
   }
 
-  return { errorChange: errorChange, toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, tech: tech, schedules: schedules, alerts: alerts };
+  return { errorChange: errorChange, toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, filterCycles: filterCycles, durationText: durationText, c8zText: c8zText, tempLock: tempLock, zoned: zoned, autoTimeDecision: autoTimeDecision, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;

@@ -1,5 +1,5 @@
 // Constructeurs purs de commandes spa (aucun réseau, aucun DOM) : chaque fonction renvoie {path, body}
-// (path relatif à /spa-commands) ou lève une Error en français. Spécification : docs/API.md. POST non testés sur un vrai spa.
+// (path relatif à /spa-commands) ou lève une Error en français. Spécification : docs/API.md. Les commandes de programme renvoient {method, path, body} (chemin complet depuis /web). POST non testés sur un vrai spa.
 var SpaCmd = (function () {
   var PUMPS = { PUMP: 1, CIRCULATION_PUMP: 1 }; // OFF toujours accepté et cycle complet (essais réels sur jet)
   var API = { PUMP: 'jet', CIRCULATION_PUMP: 'circ-pump', LIGHT: 'light', BLOWER: 'blower', MISTER: 'mister', MICROSILK: 'microsilk', AUX: 'aux', OZONE: 'ozone' };
@@ -70,6 +70,10 @@ var SpaCmd = (function () {
     return req(spaId, '/panel/state', { state: locked ? 'LOCK_PANEL' : 'UNLOCK_PANEL' });
   }
   function scale(spaId, s) { return req(spaId, '/temperature/scale', { scale: oneOf(s, ['CELSIUS', 'FAHRENHEIT'], 'Échelle') }); }
+  function tempLock(spaId, locked) { // non vérifié sur un vrai spa
+    if (typeof locked !== 'boolean') throw new Error('Verrouillage : booléen attendu.');
+    return req(spaId, '/panel/state', { state: locked ? 'LOCK_TEMP_SETTING' : 'UNLOCK_TEMP_SETTING' });
+  }
   function filter2(spaId, on) {
     if (typeof on !== 'boolean') throw new Error('Filtre 2 : booléen attendu.');
     return req(spaId, '/filter-cycles/toggle-filter2-state', { state: on ? 'ON' : 'OFF' });
@@ -78,8 +82,13 @@ var SpaCmd = (function () {
   function timeFormat(spaId, state, military) {
     if (!state || state.hour == null || state.minute == null) throw new Error('Heure du spa absente : format impossible à changer.');
     if (typeof military !== 'boolean') throw new Error('Format 24 h : booléen attendu.');
-    var r = req(spaId, '/time', { time: pad(state.hour) + ':' + pad(state.minute), isMilitaryFormat: military });
-    // shortcut: format de `time` (HH:MM) non confirmé par le portail; à vérifier sur un vrai spa avant usage.
+    return time(spaId, pad(state.hour) + ':' + pad(state.minute), military);
+  }
+  // Format `HH:MM` 24 h confirmé par le portail (capture du 24/11/2026), mais sans effet observé sur le spa …0009 : reste signalé « expérimental » dans l'interface.
+  function time(spaId, hhmm, military) {
+    if (typeof hhmm !== 'string' || !HHMM.test(hhmm)) throw new Error('Heure invalide (HH:MM attendu).');
+    if (typeof military !== 'boolean') throw new Error('Format 24 h : booléen attendu.');
+    var r = req(spaId, '/time', { time: hhmm, isMilitaryFormat: military });
     r.unverified = true;
     return r;
   }
@@ -91,10 +100,39 @@ var SpaCmd = (function () {
     if (typeof startHHMM !== 'string' || !HHMM.test(startHHMM)) throw new Error('Heure de début invalide (HH:MM attendu).');
     if (typeof hours !== 'number' || !(hours >= 0.25 && hours <= 24)) throw new Error('Durée invalide (0,25 à 24 h).');
     var r = req(spaId, '/filter-cycles/schedule', { deviceNumber: n, numOfIntervals: Math.round(hours * 4), time: startHHMM });
-    // shortcut: numOfIntervals = tranches de 15 min (hours*4) est une hypothèse non confirmée; à vérifier sur un vrai spa.
+    // numOfIntervals = minutes / 15 (60 min = 4), confirmé par le portail; sans effet observé sur le spa …0009.
     r.unverified = true;
     return r;
   }
+
+  // ---- Programmes (/spa-schedules, chemin complet depuis /web, renvoie {method, path, body}). Spécification : docs/API.md « Requêtes capturées ». ----
+  var SID = /^[0-9a-f]{24}$/i;
+  function schedId(id) {
+    if (typeof id !== 'string' || !SID.test(id)) throw new Error('Identifiant de programme invalide.');
+    return encodeURIComponent(id);
+  }
+  function schedParts(p) {
+    if (!p || typeof p !== 'object') throw new Error('Programme manquant.');
+    var name = typeof p.name === 'string' ? p.name.trim() : '';
+    if (!name) throw new Error('Nom du programme requis.');
+    if (name.length > 40) throw new Error('Nom trop long (40 caractères maximum).');
+    var days = Array.isArray(p.days) ? p.days : [];
+    if (!days.length || !days.every(function (d) { return Number.isInteger(d) && d >= 0 && d <= 6; })) throw new Error('Choisissez au moins un jour (0 = dimanche à 6 = samedi).');
+    days = days.filter(function (d, i) { return days.indexOf(d) === i; }).sort(function (a, b) { return a - b; });
+    if (!Number.isInteger(p.hour) || p.hour < 0 || p.hour > 23) throw new Error('Heure invalide (0 à 23).');
+    if (!Number.isInteger(p.minute) || p.minute < 0 || p.minute > 59) throw new Error('Minute invalide (0 à 59).');
+    oneOf(p.mode, ['READY', 'REST'], 'Mode');
+    if (typeof p.tempC !== 'number' || !isFinite(p.tempC) || p.tempC < 10 || p.tempC > 40) throw new Error('Consigne du programme : 10 à 40 °C.');
+    return { name: name, values: { heaterTemp: Math.round(p.tempC * 9 / 5 + 32), heaterMode: p.mode }, settings: { days: days, hour: p.hour, minute: p.minute } };
+  }
+  function scheduleCreate(spaId, p) {
+    if (typeof spaId !== 'string' || !spaId) throw new Error('Identifiant du spa manquant.');
+    var b = schedParts(p);
+    return { method: 'POST', path: '/spa-schedules', body: { spaId: spaId, name: b.name, values: b.values, settings: b.settings, enabled: true } };
+  }
+  function scheduleUpdate(id, p) { var q = schedId(id), b = schedParts(p); return { method: 'PATCH', path: '/spa-schedules/' + q, body: b }; }
+  function scheduleTrigger(id) { return { method: 'POST', path: '/spa-schedules/' + schedId(id) + '/trigger', body: {} }; }
+  function scheduleDelete(id) { return { method: 'DELETE', path: '/spa-schedules/' + schedId(id), body: null }; }
 
   // Éteint seulement les équipements de confort. Jamais CIRCULATION_PUMP (pilotable seule, mais la couper coupe aussi la filtration : choix délibéré),
   // ni OZONE, FILTER, HEATER : systèmes automatiques (filtration, désinfection, chauffe) qu'on ne coupe pas d'un clic.
@@ -126,6 +164,6 @@ var SpaCmd = (function () {
     return { ok: true, reason: null };
   }
 
-  return { component: component, nextState: nextState, temperature: temperature, temperatureF: temperatureF, heaterMode: heaterMode, range: range, panel: panel, scale: scale, filter2: filter2, timeFormat: timeFormat, filterCycle: filterCycle, allOff: allOff, guard: guard };
+  return { component: component, nextState: nextState, temperature: temperature, temperatureF: temperatureF, heaterMode: heaterMode, range: range, panel: panel, tempLock: tempLock, time: time, scheduleCreate: scheduleCreate, scheduleUpdate: scheduleUpdate, scheduleTrigger: scheduleTrigger, scheduleDelete: scheduleDelete, scale: scale, filter2: filter2, timeFormat: timeFormat, filterCycle: filterCycle, allOff: allOff, guard: guard };
 })();
 if (typeof module !== 'undefined') module.exports = SpaCmd;
