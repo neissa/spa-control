@@ -72,7 +72,9 @@ var SpaCmd = (function () {
   function scale(spaId, s) { return req(spaId, '/temperature/scale', { scale: oneOf(s, ['CELSIUS', 'FAHRENHEIT'], 'Échelle') }); }
   function tempLock(spaId, locked) { // non vérifié sur un vrai spa
     if (typeof locked !== 'boolean') throw new Error('Verrouillage : booléen attendu.');
-    return req(spaId, '/panel/state', { state: locked ? 'LOCK_TEMP_SETTING' : 'UNLOCK_TEMP_SETTING' });
+    var r = req(spaId, '/panel/state', { state: locked ? 'LOCK_TEMP_SETTING' : 'UNLOCK_TEMP_SETTING' });
+    r.unverified = true;
+    return r;
   }
   function filter2(spaId, on) {
     if (typeof on !== 'boolean') throw new Error('Filtre 2 : booléen attendu.');

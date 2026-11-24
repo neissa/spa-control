@@ -131,7 +131,7 @@
     <div class=expbox><button class=sw id=exp role=switch aria-checked=false aria-label="Commandes expérimentales" aria-describedby=expd><span class=swt style="min-width:0">Commandes expérimentales : <span id=expt>désactivées</span></span><span class=track aria-hidden=true><span class=thumb></span></span></button>
     <small id=expd>Réglages jamais vérifiés sur un vrai spa (format 12/24 h, cycle de filtration, heure). Désactivées par défaut.</small></div>
     <div class=expbox><button class=sw id=autot role=switch aria-checked=true aria-label="Correction automatique de l'heure" aria-describedby=autotd><span class=swt style="min-width:0">Correction automatique de l'heure : <span id=autott>activée</span></span><span class=track aria-hidden=true><span class=thumb></span></span></button>
-    <small id=autotd>Page ouverte, si l'horloge d'un spa en ligne dérive de plus de 5 min, l'heure lui est renvoyée (une tentative par spa toutes les 30 min, arrêt après 2 échecs). Sur le spa …0009 cette commande n'a pas d'effet observé.</small></div>
+    <small id=autotd>Page ouverte, si l'horloge d'un spa en ligne dérive de plus de 5 min, l'heure de cet appareil lui est renvoyée (une tentative par spa toutes les 30 min, arrêt après 2 échecs). Sur le spa …0009 cette commande n'a pas d'effet observé.</small></div>
     <small>La déconnexion efface les jetons et les données du compte ; relevés, événements et noms restent sur cet appareil.</small>
   </div>
   <p><small>Les relevés ne sont faits que page ouverte. Garder cet onglet ouvert pour surveiller le spa.</small></p>
@@ -147,6 +147,7 @@
   <div class=field><label id=stl>Consigne du programme</label><div class=stp role=group aria-labelledby=stl><button type=button class="btn round" id=sdn aria-label="Baisser la consigne de 1 °F">−</button>
     <output id=stemp aria-live=polite></output><button type=button class="btn round" id=sup aria-label="Monter la consigne de 1 °F">+</button></div></div>
   <fieldset><legend>Mode</legend><label class=chk><input type=radio name=smode value=READY>Prêt</label><label class=chk><input type=radio name=smode value=REST>Repos</label></fieldset>
+  <p id=sfrr class=sub hidden>Ce programme était en Prêt-en-repos: choisissez Prêt ou Repos (le portail ne propose que ces deux modes).</p>
   <p id=sferr role=alert></p>
   <div class=dacts2><button class=primary id=ssave type=submit>Enregistrer</button><button type=button id=scancel>Annuler</button></div></form></dialog>
 
@@ -156,7 +157,10 @@
 <script>
 const API = 'https://iot.controlmyspa.com/web', POLL_MS = 60000, KEEP_MS = 14 * 864e5, SCHED_MS = 600000;
 const $ = id => document.getElementById(id);
-const store = (k, v) => v === undefined ? JSON.parse(localStorage.getItem('spa.' + k) || 'null') : localStorage.setItem('spa.' + k, JSON.stringify(v));
+const store = (k, v) => {
+  if (v !== undefined) return localStorage.setItem('spa.' + k, JSON.stringify(v));
+  try { return JSON.parse(localStorage.getItem('spa.' + k) || 'null'); } catch (e) { return null; } // valeur corrompue ou stockage inaccessible : comme absente
+};
 
 // Nom affiché : celui choisi par l'utilisateur, sinon modèle + série
 // Les objets stockés viennent de JSON.parse et ont un prototype : tout id (hash ou API) s'y lit via own().
@@ -252,33 +256,48 @@ async function refreshSpa(id) {
 }
 
 // Relecture des programmes d'un spa (GET) + de son état ; met à jour l'affichage.
-async function reloadScheds(id) {
+async function reloadScheds(id) { // true si la liste a été relue
+  let ok = true;
   try {
     const d = await get(`/spa-schedules/findBySpa/${encodeURIComponent(id)}`), s = store('schedules') || {};
     s[id] = d.schedules || []; store('schedules', s); schedAt[id] = Date.now();
-  } catch (e) { toast(`Relecture des programmes impossible (${e.message}).`, 'warn'); }
+  } catch (e) { toast(`Relecture des programmes impossible (${e.message}).`, 'warn'); ok = false; }
   await refreshSpa(id).catch(() => {}); safeRender();
+  return ok;
 }
 
 // ---- Correction automatique de l'heure : seule commande envoyée sans clic, désactivable (pied de page) ----
 const autoOn = () => store('autoTime') !== false;
-const AT = Object.create(null); // par spa : {last (ms du dernier essai), fails (échecs consécutifs), stopped}
-const specTz = id => { const s = own(store('schedules'), id); return s && s[0] && s[0].settings && s[0].settings.timeZone || null; };
+// État par spa {last, fails} gardé dans localStorage (spa.autoTimeState) : rechargements et onglets partagent la limite. Doublé en mémoire si l'écriture échoue.
+const AT = Object.create(null);
+const atGet = id => {
+  const o = store('autoTimeState'), a = own(o && typeof o === 'object' ? o : null, id) || {}, m = AT[id] || {};
+  const n = (x, y) => Math.max(Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0);
+  return { last: n(a.last, m.last) || null, fails: n(a.fails, m.fails) };
+};
+const atSet = (id, p) => {
+  AT[id] = { ...atGet(id), ...p };
+  try { const o = store('autoTimeState'), m = o && typeof o === 'object' && !Array.isArray(o) ? o : {}; m[id] = AT[id]; store('autoTimeState', m); } catch (e) { /* mémoire seulement */ }
+};
+const atReset = () => { for (const k of Object.keys(AT)) delete AT[k]; try { store('autoTimeState', {}); } catch (e) { /* ignoré */ } };
+// Une commande ou une confirmation est en cours sur ce spa : on n'y touche pas (sinon on annulerait par exemple un changement de format tout juste fait).
+const spaBusy = id => !!spaLock(id) || [ui.busy, ui.pend].some(o => Object.keys(o).some(k => k.startsWith(id + '|') && o[k]));
 async function autoTime(id, l) {
-  const a = AT[id] || (AT[id] = { last: null, fails: 0, stopped: false });
-  const d = SpaView.autoTimeDecision({ state: l.state, stateTs: l.ts, now: Date.now(), enabled: autoOn(), lastAttempt: a.last, failures: a.fails, timeZone: specTz(id) });
+  if (spaBusy(id)) return;
+  const a = atGet(id);
+  const d = SpaView.autoTimeDecision({ state: l.state, stateTs: l.ts, now: Date.now(), enabled: autoOn(), lastAttempt: a.last, failures: a.fails });
   if (!d) return;
-  a.last = Date.now();
-  const fail = why => { a.fails++; log(label(id), why, id); if (a.fails >= 2) { a.stopped = true; log(label(id), 'Correction automatique de l\'heure désactivée pour ce spa jusqu\'au rechargement', id); } safeRender(); };
+  atSet(id, { last: Date.now() }); // avant le premier await : un autre onglet ou un rechargement voit l'essai
+  const fail = why => { const f = atGet(id).fails + 1; atSet(id, { fails: f }); log(label(id), why, id); if (f >= 2) log(label(id), "Correction automatique de l'heure désactivée pour ce spa (réactivez l'interrupteur du pied de page)", id); safeRender(); };
   try { await command(SpaCmd.time(id, d.time, d.military)); } catch (e) { return fail(`Correction de l'heure refusée (${e.message})`); }
+  let settled = false;
   [3, 8, 15].forEach((s, i) => setTimeout(async () => {
-    if (a.settled) return;
+    if (settled) return;
     try { await refreshSpa(id); } catch (e) { /* palier suivant */ }
-    const n = own(store('live'), id), c = n && SpaView.clock(n.state, SpaView.zoned(Date.now(), specTz(id)), 5);
-    if (c && !c.drifted) { a.settled = true; a.fails = 0; log(label(id), `Heure corrigée automatiquement (écart de ${Math.abs(d.driftMin)} min)`, id); safeRender(); }
-    else if (i === 2) { a.settled = true; fail('Correction de l\'heure sans effet (le spa n\'a pas changé)'); }
+    const n = own(store('live'), id), c = n && SpaView.clock(n.state, Date.now(), 5);
+    if (c && !c.drifted) { settled = true; atSet(id, { fails: 0 }); log(label(id), `Heure corrigée automatiquement (écart de ${Math.abs(d.driftMin)} min)`, id); safeRender(); }
+    else if (i === 2) { settled = true; fail("Correction de l'heure sans effet (le spa n'a pas changé)"); }
   }, s * 1000));
-  a.settled = false;
 }
 
 // ---- Journaux serveur (GET, mémoire seulement, jamais dans localStorage) ----
@@ -396,7 +415,7 @@ function tempCtl(id, t, x) {
     <output aria-label="Consigne à appliquer">${esc(C(SpaView.toC(cur)))} <small>(${cur} °F)</small></output>
     <button class="btn round" ${dat('tup', id)} aria-label="Monter la consigne de 1 °F"${busyAttr(off || (hi != null && cur + 1 > hi))}>+</button>
     <button class=primary ${dat('tapply', id)}${busyAttr(off || d == null)}>${b ? 'Envoi…' : 'Appliquer'}</button></div>
-    ${locked ? '<p class=sub style="margin:4px 0 0"><strong>Consigne verrouillée</strong> : déverrouillez-la (détail du spa) pour la modifier.</p>' : ''}
+    ${locked ? '<p class=sub style="margin:4px 0 0"><strong>Consigne verrouillée</strong> : déverrouillez-la sur le panneau du spa (ou via les commandes expérimentales) pour la modifier.</p>' : ''}
     <small>Plage ${esc((own(RANGE, t.rangeMode) || '').toLowerCase())} : ${esc(C(SpaView.toC(lo)))} à ${esc(C(SpaView.toC(hi)))}${d == null && !locked ? ' · modifiez la valeur puis appuyez sur Appliquer' : ''}<br>Sur certains spas la consigne est acceptée sans changer (comportement identique au portail officiel).</small>${hint(k)}`;
 }
 
@@ -440,6 +459,7 @@ function detail(id, live, info, all, now) {
   const X = '<span class=badge-x>Expérimental, non vérifié</span>';
   const expGroup = !experimental() ? '' : group('Commandes expérimentales',
     (f2 ? row(`Cycle de filtration 2<br>${X}`, sw(id, 'filter2', 'Cycle de filtration 2 (expérimental)', f2.on, 'filter2', null, 'Activé', 'Désactivé')) : '') +
+    (SpaView.tempLock(x) == null ? '' : row(`Verrouillage de la consigne<br>${X}`, sw(id, 'tlock', 'Verrouillage de la consigne (expérimental)', SpaView.tempLock(x), 'tlock', null, 'Verrouillée', 'Déverrouillée') + "<small class=hint>Le portail officiel n'a pas cette commande : vérifiez sur le panneau.</small>")) +
     row(`Format de l'heure<br>${X}`, `<span class=hint style="text-align:right">Actuel : ${c.military ? '24 h' : '12 h'}</span>`) +
     `<div class="row blk"><div class=ctl>${seg(id, 'fmt', 'fmt', "Format de l'heure", [['12', '12 h'], ['24', '24 h']], c.military ? '24' : '12')}</div></div>` +
     `<div class="row blk"><strong>Cycle de filtration</strong> ${X}${filters.length ? `
@@ -457,7 +477,7 @@ function detail(id, live, info, all, now) {
       `<div class=row style="display:block">${waterBar(t.current, t.set)}</div>` +
       row('Plage active', val(own(RANGE, t.rangeMode) || t.rangeMode)) + row('Plage basse', `${esc(C(t.range.lowMin))} à ${esc(C(t.range.lowMax))}`) + row('Plage haute', `${esc(C(t.range.highMin))} à ${esc(C(t.range.highMax))}`) +
       `<div class="row blk"><strong>Nouvelle consigne</strong><div class=ctl>${tempCtl(id, t, x)}</div></div>` +
-      (SpaView.tempLock(x) == null ? '' : row('Verrouillage de la consigne', sw(id, 'tlock', 'Verrouillage de la consigne', SpaView.tempLock(x), 'tlock', null, 'Verrouillée', 'Déverrouillée') + "<small class=hint>Non vérifié sur un vrai spa : le portail officiel n'a pas cette commande. Vérifiez sur le panneau.</small>")))}
+      '')}
     ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(own(MODE_TXT, ht.mode) || 'Mode inconnu.')}</p></div>` +
       `<div class="row blk"><strong>Plage de température</strong><div class=ctl>${seg(id, 'range', 'range', 'Plage de température', [['HIGH', 'Haute'], ['LOW', 'Basse']], ht.range)}</div></div>` +
       row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('C8Zone', c8zHtml(ht)))}
@@ -468,7 +488,7 @@ function detail(id, live, info, all, now) {
     ${expGroup}
     ${group('Heure', row('Heure du spa', esc(c.text)) + row('Format', c.military ? '24 h' : '12 h') + row("Heure de l'appareil", esc(dev)) +
       row('Écart', c.driftMin == null ? '—' : SpaView.driftText(c.driftMin)))}
-    ${c.drifted ? `<p class=note>${!autoOn() ? "La correction automatique est désactivée (pied de page) : " : own(AT, id) && own(AT, id).fails >= 2 ? "Correction automatique désactivée pour ce spa jusqu'au rechargement (2 échecs) : " : "Correction automatique active (écart > 5 min, spa en ligne) : "}réglez l'heure depuis le panneau du spa${experimental() ? ' ou avec la commande expérimentale ci-dessus.' : ', ou activez les commandes expérimentales (pied de page).'} Sur le spa …0009 la commande d'heure n'a pas d'effet observé.</p>` : ''}
+    ${c.drifted ? `<p class=note>${!autoOn() ? "La correction automatique est désactivée (pied de page) : " : atGet(id).fails >= 2 ? "Correction automatique arrêtée pour ce spa (2 échecs) : réactivez l'interrupteur du pied de page pour la réarmer ; " : "Correction automatique active (écart > 5 min, spa en ligne) : "}réglez l'heure depuis le panneau du spa${experimental() ? ' ou avec la commande expérimentale ci-dessus.' : ', ou activez les commandes expérimentales (pied de page).'} Sur le spa …0009 la commande d'heure n'a pas d'effet observé.</p>` : ''}
     ${group('Programmes', progHtml(id, scheds))}
     ${group('Informations techniques', row('Numéro de série', val(tc.serial)) + row('Modèle', val(tc.model)) + row('Constructeur', val(tc.oem)) + row('Revendeur', val(tc.dealer)) +
       row('Firmware contrôleur', val(tc.firmware)) + row('Version passerelle', val(tc.gateway)) + row('Connectivité', x.online ? 'En ligne' : 'Hors ligne') +
@@ -663,12 +683,18 @@ async function doCmd(d) {
     case 'panel': return run(id, 'panel', s => { if (!hasPanelLock(s)) throw new Error('Verrouillage du panneau indisponible : le spa ne le signale pas.'); const to = !isLocked(s); return { req: SpaCmd.panel(id, to), desc: to ? 'Verrouillage du panneau' : 'Déverrouillage du panneau', expect: n => isLocked(n) === to,
       // Le serveur ne rafraîchit l'état que toutes les ~30 s : ne pas conclure à l'échec avant 45 s.
       opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre.", fail: to ? 'Verrouillage non confirmé par le spa' : undefined } }; });
-    case 'tlock': return run(id, 'tlock', s => {
+    case 'tlock': {
+      if (!expOn()) return;
+      const l0 = own(store('live'), id), c0 = l0 && SpaView.tempLock(l0.state);
+      if (!await expConfirm(`${c0 ? 'Déverrouiller' : 'Verrouiller'} la consigne de ${label(id)} ?`, "L'effet est relu sur le spa ; sinon vérifiez-le sur le panneau.")) return;
+      if (!expOn()) return;
+      return run(id, 'tlock', s => {
       const cur = SpaView.tempLock(s); if (cur == null) throw new Error('Verrouillage de la consigne indisponible : le spa ne le signale pas.');
       const to = !cur;
       return { req: SpaCmd.tempLock(id, to), desc: to ? 'Verrouillage de la consigne' : 'Déverrouillage de la consigne', expect: n => SpaView.tempLock(n) === to,
         opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre.", fail: 'Non confirmé par le spa (commande non vérifiée sur un vrai spa)' } };
-    });
+      });
+    }
     case 'snew': return openSched(id, null);
     case 'sedit': { const sc = findSched(id, d.key); return sc ? openSched(id, sc) : toast('Programme introuvable : actualisez la page.', 'error'); }
     case 'srun': {
@@ -725,27 +751,28 @@ async function schedCall(id, ck, req, desc) {
   ui.busy[k] = 1; $('toasterr').textContent = ''; safeRender();
   try { await command(req); } catch (e) { delete ui.busy[k]; safeRender(); return `${desc} : ${e.message}`; }
   delete ui.busy[k]; toast(`${desc} : accepté par le portail. Relecture des programmes…`, 'info'); safeRender();
-  setTimeout(() => reloadScheds(id).then(() => toast(`${desc} : programmes relus.`, 'info')), 1000);
+  setTimeout(() => reloadScheds(id).then(ok => ok && toast(`${desc} : programmes relus.`, 'info')), 1000);
   return null;
 }
-const SF = { spa: null, id: null, tempF: 100 };
+const SF = { spa: null, id: null, tempF: 100, tok: 0 }; // tok : change à chaque ouverture et fermeture du formulaire
 const DAYN = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 $('sdays').innerHTML = DAYN.map((n, i) => `<label class=chk><input type=checkbox value="${i}">${n}</label>`).join('');
 const sfTemp = () => { $('stemp').innerHTML = `${esc(C(SpaView.toC(SF.tempF)))} <small>(${SF.tempF} °F)</small>`; $('sdn').disabled = SF.tempF <= 50; $('sup').disabled = SF.tempF >= 104; };
 function openSched(spa, sc) {
   const l = own(store('live'), spa), t = l ? SpaView.temps(l.state) : {};
-  SF.spa = spa; SF.id = sc ? sc.id : null; SF.tempF = Math.min(104, Math.max(50, (sc && SpaView.toF(sc.setTemp)) || t.setF || 100));
+  SF.tok++; SF.spa = spa; SF.id = sc ? sc.id : null; SF.tempF = Math.min(104, Math.max(50, (sc && SpaView.toF(sc.setTemp)) || t.setF || 100));
   $('sdlgt').textContent = sc ? 'Modifier le programme' : 'Nouveau programme';
   $('sname').value = sc ? sc.name || '' : ''; $('sstart').value = sc ? sc.time : '07:00';
   [...$('sdays').querySelectorAll('input')].forEach(i => { i.checked = sc ? sc.dayNums.includes(Number(i.value)) : true; });
-  const m = sc && ['READY', 'REST'].includes(sc.heaterMode) ? sc.heaterMode : 'READY';
+  const rr = !!sc && sc.heaterMode === 'READY_REST', m = rr ? 'REST' : sc && sc.heaterMode === 'REST' ? 'REST' : 'READY';
+  $('sfrr').hidden = !rr;
   document.querySelectorAll('#sform [name=smode]').forEach(r => { r.checked = r.value === m; });
   $('sferr').textContent = ''; $('ssave').disabled = false; sfTemp(); $('sdlg').showModal();
 }
 $('sdn').onclick = () => { SF.tempF = Math.max(50, SF.tempF - 1); sfTemp(); };
 $('sup').onclick = () => { SF.tempF = Math.min(104, SF.tempF + 1); sfTemp(); };
 $('scancel').onclick = () => $('sdlg').close();
-$('sdlg').onclose = () => safeRender();
+$('sdlg').onclose = () => { SF.tok++; safeRender(); };
 $('sform').onsubmit = async e => {
   e.preventDefault(); if ($('ssave').disabled) return;
   const hm = /^(\d\d):(\d\d)$/.exec($('sstart').value), r = document.querySelector('#sform [name=smode]:checked');
@@ -757,7 +784,9 @@ $('sform').onsubmit = async e => {
     req = SF.id ? SpaCmd.scheduleUpdate(SF.id, p) : SpaCmd.scheduleCreate(SF.spa, p);
   } catch (er) { $('sferr').textContent = er.message; return; }
   $('ssave').disabled = true; $('sferr').textContent = '';
+  const tok = SF.tok;
   const err = await schedCall(SF.spa, SF.id ? 's:' + SF.id : 's:new', req, SF.id ? 'Modification du programme' : 'Création du programme');
+  if (tok !== SF.tok) return; // formulaire fermé ou rouvert entre-temps : résultat périmé
   if (err) { $('sferr').textContent = err; $('ssave').disabled = false; } else $('sdlg').close();
 };
 
@@ -799,7 +828,7 @@ $('notif').onclick = () => window.Notification && Notification.requestPermission
 const syncExp = () => { const on = experimental(); $('exp').setAttribute('aria-checked', on); $('expt').textContent = on ? 'activées' : 'désactivées'; };
 $('exp').onclick = () => { store('experimental', !experimental()); syncExp(); safeRender(); };
 const syncAuto = () => { const on = autoOn(); $('autot').setAttribute('aria-checked', on); $('autott').textContent = on ? 'activée' : 'désactivée'; };
-$('autot').onclick = () => { store('autoTime', !autoOn()); syncAuto(); safeRender(); };
+$('autot').onclick = () => { const on = !autoOn(); store('autoTime', on); if (on) atReset(); syncAuto(); safeRender(); }; // réactiver = remise à zéro
 syncExp(); syncAuto();
 show(!!store('tokens'));
 </script>

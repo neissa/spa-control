@@ -115,12 +115,13 @@ var SpaView = (function () {
   var DAYS = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
   // shortcut: jours numériques 0 = dimanche … 6 = samedi (à vérifier sur données réelles); les chaînes restent telles quelles.
   function schedules(list) {
-    return (list || []).map(function (s) {
-      var st = s.settings || {}, v = s.values || {};
+    return objs(list).map(function (s) {
+      var st = s.settings && typeof s.settings === 'object' ? s.settings : {}, v = s.values && typeof s.values === 'object' ? s.values : {};
+      var days = (Array.isArray(st.days) ? st.days : []).filter(function (d) { return d != null; });
       return {
-        id: s._id, name: s.name, hour: st.hour || 0, minute: st.minute || 0, dayNums: (st.days || []).filter(function (d) { return typeof d === 'number'; }),
-         enabled: !!s.enabled, time: pad(st.hour || 0) + ':' + pad(st.minute || 0),
-        days: (st.days || []).map(function (d) { return typeof d === 'number' ? DAYS[d] : d; }),
+        id: s._id, name: s.name, hour: st.hour || 0, minute: st.minute || 0, dayNums: days.filter(function (d) { return typeof d === 'number'; }),
+        enabled: !!s.enabled, time: pad(st.hour || 0) + ':' + pad(st.minute || 0),
+        days: days.map(function (d) { return typeof d === 'number' ? DAYS[d] : d; }),
         timeZone: st.timeZone == null ? null : st.timeZone, setTemp: v.heaterTemp, heaterMode: v.heaterMode, tempRange: v.tempRange
       };
     }).sort(function (a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
@@ -153,30 +154,19 @@ var SpaView = (function () {
     return state.tempLock === true || /^LOCK/.test(String(state.tempLock));
   }
 
-  // Date dont les champs locaux (heure/minute) valent l'heure murale de `now` dans le fuseau tz (sinon : celle de l'appareil).
-  function zoned(now, tz) {
-    var d = new Date(now);
-    if (!tz) return d;
-    try {
-      var p = {};
-      new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).formatToParts(d).forEach(function (x) { p[x.type] = Number(x.value); });
-      return isFinite(p.hour) && isFinite(p.minute) ? new Date(2000, 0, 1, p.hour, p.minute) : d;
-    } catch (e) { return d; }
-  }
-
-  // Décision pure de correction automatique de l'heure : null ou {time:'HH:MM', military, driftMin}.
-  // o = {state, stateTs, now, enabled, lastAttempt, failures, timeZone}. Garde-fous : activée, en ligne, état < 90 s, écart > 5 min (ou horloge non réglée),
-  // pas d'essai depuis 30 min, moins de 2 échecs consécutifs.
+  // Décision pure de correction automatique de l'heure : null ou {time:'HH:MM', military, driftMin}. Heure = celle de l'appareil (comme l'alerte d'horloge).
+  // o = {state, stateTs, now, enabled, lastAttempt, failures}. Garde-fous : activée, format 24 h connu (booléen), en ligne, état < 90 s, dernier signal < 5 min,
+  // écart calculable > 5 min (ou horloge non réglée), pas d'essai depuis 30 min, moins de 2 échecs consécutifs.
   function autoTimeDecision(o) {
     var st = o && o.state;
-    if (!o || !o.enabled || !st || !st.online) return null;
+    if (!o || !o.enabled || !st || !st.online || typeof st.military !== 'boolean') return null;
     var now = new Date(o.now).getTime();
-    if (!(now - o.stateTs <= 90000)) return null;
+    if (!(now - o.stateTs <= 90000) || ping(st, now, 5).stale) return null;
     if ((o.failures || 0) >= 2) return null;
     if (o.lastAttempt != null && now - o.lastAttempt < 30 * 60000) return null;
-    var z = zoned(now, o.timeZone), c = clock(st, z, 5);
-    if (!(c.notSet || (c.driftMin != null && Math.abs(c.driftMin) > 5))) return null;
-    return { time: pad(z.getHours()) + ':' + pad(z.getMinutes()), military: c.military, driftMin: c.driftMin };
+    var d = new Date(now), c = clock(st, d, 5);
+    if (c.driftMin == null || !(c.notSet || Math.abs(c.driftMin) > 5)) return null;
+    return { time: pad(d.getHours()) + ':' + pad(d.getMinutes()), military: c.military, driftMin: c.driftMin };
   }
 
   function alerts(state, spaInfo, now, opts) {
@@ -203,6 +193,6 @@ var SpaView = (function () {
     return 'code erreur ' + a + ' -> ' + b;
   }
 
-  return { errorChange: errorChange, toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, filterCycles: filterCycles, durationText: durationText, c8zText: c8zText, tempLock: tempLock, zoned: zoned, autoTimeDecision: autoTimeDecision, tech: tech, schedules: schedules, alerts: alerts };
+  return { errorChange: errorChange, toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, filterCycles: filterCycles, durationText: durationText, c8zText: c8zText, tempLock: tempLock, autoTimeDecision: autoTimeDecision, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;

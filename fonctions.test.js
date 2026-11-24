@@ -37,32 +37,37 @@ test('schedules: expose heure, minute et jours numériques pour l\'édition', ()
   assert.deepEqual([l.hour, l.minute, l.dayNums], [7, 9, [0, 3]]);
 });
 
-test('zoned: heure murale dans un fuseau', () => {
-  const t = Date.UTC(2026, 0, 15, 12, 0);
-  const z = V.zoned(t, 'Asia/Tokyo');
-  assert.deepEqual([z.getHours(), z.getMinutes()], [21, 0]);
-  assert.equal(V.zoned(t, 'Pas/Un_Fuseau').getTime(), t);
-  assert.equal(V.zoned(t).getTime(), t);
+test('schedules / findSched: données partielles ignorées sans exception', () => {
+  assert.deepEqual(V.schedules(null), []); assert.deepEqual(V.schedules({}), []); assert.deepEqual(V.schedules('x'), []);
+  const l = V.schedules([null, 5, { _id: 'a' }, { _id: 'b', settings: { days: 'lun', hour: 7 }, values: null }, { _id: 'c', settings: { days: [null, 1, 'mar'] } }, { _id: 'd', settings: null }]);
+  assert.equal(l.length, 4);
+  assert.deepEqual(l.map(x => x.id).sort(), ['a', 'b', 'c', 'd']);
+  const c = l.find(x => x.id === 'c'); assert.deepEqual([c.dayNums, c.days], [[1], ['lun', 'mar']]);
+  assert.deepEqual(l.find(x => x.id === 'b').days, []);
 });
 
-test('autoTimeDecision: nominal, écart faible, hors ligne, état périmé, essai récent, échecs, réglage', () => {
+test('autoTimeDecision: nominal, écart faible, hors ligne, état périmé, essai récent, échecs, réglage, format, signal', () => {
   const t = new Date(2026, 0, 15, 12, 0).getTime();
-  const base = () => ({ state: Object.assign(ok(), { minute: 20 }), stateTs: t - 10000, now: t, enabled: true, lastAttempt: null, failures: 0 });
+  const base = () => ({ state: Object.assign(ok(), { minute: 20, updatedAt: new Date(t - 60000).toISOString() }), stateTs: t - 10000, now: t, enabled: true, lastAttempt: null, failures: 0 });
   assert.deepEqual(V.autoTimeDecision(base()), { time: '12:00', military: true, driftMin: 20 });
   const m = base(); m.state.military = false; assert.equal(V.autoTimeDecision(m).military, false);
+  for (const bad of [undefined, null, 'true', 1]) { const x = base(); x.state.military = bad; assert.equal(V.autoTimeDecision(x), null, String(bad)); }
+  const nm = base(); delete nm.state.military; assert.equal(V.autoTimeDecision(nm), null);
   const small = base(); small.state.minute = 4; assert.equal(V.autoTimeDecision(small), null);
   const edge = base(); edge.state.minute = 5; assert.equal(V.autoTimeDecision(edge), null);
   const six = base(); six.state.minute = 6; assert.notEqual(V.autoTimeDecision(six), null);
   const off = base(); off.state.online = false; assert.equal(V.autoTimeDecision(off), null);
   const old = base(); old.stateTs = t - 91000; assert.equal(V.autoTimeDecision(old), null);
+  const ping10 = base(); ping10.state.updatedAt = new Date(t - 10 * 60000).toISOString(); assert.equal(V.autoTimeDecision(ping10), null);
+  const noping = base(); delete noping.state.updatedAt; assert.equal(V.autoTimeDecision(noping), null);
   const rec = base(); rec.lastAttempt = t - 29 * 60000; assert.equal(V.autoTimeDecision(rec), null);
   const old2 = base(); old2.lastAttempt = t - 31 * 60000; assert.notEqual(V.autoTimeDecision(old2), null);
   const f = base(); f.failures = 2; assert.equal(V.autoTimeDecision(f), null);
   const dis = base(); dis.enabled = false; assert.equal(V.autoTimeDecision(dis), null);
   assert.equal(V.autoTimeDecision(null), null);
   const ns = base(); ns.state.timeNotSet = true; ns.state.minute = 0; assert.notEqual(V.autoTimeDecision(ns), null);
-  const tz = base(); tz.timeZone = 'Asia/Tokyo'; tz.now = Date.UTC(2026, 0, 15, 12, 0); tz.stateTs = tz.now - 1000; tz.state.hour = 21; tz.state.minute = 20;
-  assert.equal(V.autoTimeDecision(tz).time, '21:00');
+  const nul = base(); nul.state.hour = null; nul.state.timeNotSet = true; assert.equal(V.autoTimeDecision(nul), null); // écart inconnu : rien
+  const tz = base(); tz.state.timeZone = 'Asia/Tokyo'; tz.timeZone = 'Asia/Tokyo'; assert.equal(V.autoTimeDecision(tz).time, '12:00'); // fuseau ignoré : heure de l'appareil
 });
 
 test('time: HH:MM et booléen', () => {
@@ -72,8 +77,8 @@ test('time: HH:MM et booléen', () => {
 });
 
 test('tempLock: panel/state LOCK/UNLOCK_TEMP_SETTING', () => {
-  assert.deepEqual(C.tempLock(ID, true), B('/panel/state', { state: 'LOCK_TEMP_SETTING' }));
-  assert.deepEqual(C.tempLock(ID, false), B('/panel/state', { state: 'UNLOCK_TEMP_SETTING' }));
+  assert.deepEqual(C.tempLock(ID, true), Object.assign(B('/panel/state', { state: 'LOCK_TEMP_SETTING' }), { unverified: true }));
+  assert.deepEqual(C.tempLock(ID, false), Object.assign(B('/panel/state', { state: 'UNLOCK_TEMP_SETTING' }), { unverified: true }));
   assert.throws(() => C.tempLock(ID, 'oui'), /booléen/);
 });
 
