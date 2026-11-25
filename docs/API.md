@@ -140,3 +140,6 @@ Relevée dans l'application officielle et confirmée par les messages de validat
 - L'état brut du portail (`/web/spas/{id}/current-state`) expose aussi `ethernetPluggedIn` et `rs485AcquiredAddress`. Sur le spa à passerelle 1.16 qui ignore les réglages, `rs485AcquiredAddress` vaut 0 (17 sur l'autre spa) et `ethernetPluggedIn` est faux.
 - L'application contient aussi un parcours Bluetooth (`BLUETOOTH_VIEW_…`) pour configurer la passerelle ; non étudié.
 - Essai : la consigne envoyée par ce canal (`via:"MOBILE"`) sur le spa …0009 est acceptée (HTTP 200) mais sans effet, comme par le canal web.
+
+### Essai réel de la Clim8Zone depuis la page (25/11/2026, spa à passerelle 1.16)
+`POST https://iot.controlmyspa.com/spa-commands/c8zone/state` `{spaId, via:"MOBILE", speedState:"C8Z_SPEED_SILENT"}` puis `"C8Z_SPEED_SMART"` : appliqué et confirmé par la relecture de `current-c8z` en ~4,5 s chaque fois, retour à l'état de départ vérifié. C'est le seul réglage qui s'applique sur ce spa, dont la consigne, le mode de chauffe, le format de l'heure et le verrouillage du panneau sont acceptés (HTTP 200) sans effet : la Clim8Zone passe par un autre chemin que le contrôleur principal. Le mode (`modeState`) et le chauffage d'appoint (`heaterState`) n'ont pas été essayés (mode laissé `C8Z_MODE_DISABLED`). CORS ouvert sur cette route (origine quelconque).
