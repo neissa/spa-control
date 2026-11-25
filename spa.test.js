@@ -168,21 +168,23 @@ test('components: sans port ou clé en double => aucun contrôle', () => {
 test('components: circulation pilotable sans port, libellé perso', () => {
   const s = ok(); s.components = [{ componentType: 'CIRCULATION_PUMP', port: null, value: 'OFF', availableValues: ['OFF', 'LOW', 'HIGH'] }];
   const [k] = V.components(s, { 'CIRCULATION_PUMP:0': 'Circ' });
-  assert.deepEqual([k.label, k.ambiguous, k.control], ['Circ', false, { kind: 'cycle' }]);
+  assert.deepEqual([k.label, k.ambiguous, k.control], ['Circ', false, { kind: 'switch', onValue: 'HIGH' }]);
   assert.equal(V.components(s)[0].label, 'Pompe de circulation');
 });
 
 test('control: interrupteur, niveaux, ou rien', () => {
   assert.deepEqual(V.control({ componentType: 'LIGHT', value: 'OFF', availableValues: ['OFF', 'ON'] }), { kind: 'switch', onValue: 'ON' });
   assert.deepEqual(V.control({ componentType: 'PUMP', value: 'OFF', availableValues: ['OFF', 'HIGH', 'DISABLED'] }), { kind: 'switch', onValue: 'HIGH' });
-  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'LOW', availableValues: ['OFF', 'LOW', 'HIGH'] }), { kind: 'cycle' });
+  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'LOW', availableValues: ['OFF', 'LOW', 'HIGH'] }), { kind: 'switch', onValue: 'HIGH' });
+  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'LOW', availableValues: ['OFF', 'LOW', 'MED', 'HIGH'] }), { kind: 'switch', onValue: 'HIGH' });
+  assert.deepEqual(V.control({ componentType: 'LIGHT', value: 'LOW', availableValues: ['OFF', 'LOW', 'MED', 'HIGH'] }), { kind: 'cycle' });
   assert.equal(V.control({ componentType: 'OZONE', value: 'ON', availableValues: ['OFF', 'ON'] }), null);
   assert.deepEqual(V.control({ componentType: 'CIRCULATION_PUMP', value: 'OFF', availableValues: ['OFF', 'HIGH'] }), { kind: 'switch', onValue: 'HIGH' });
-  assert.deepEqual(V.control({ componentType: 'CIRCULATION_PUMP', value: 'LOW', availableValues: ['OFF', 'LOW', 'HIGH'] }), { kind: 'cycle' });
-  assert.deepEqual(V.control({ componentType: 'CIRCULATION_PUMP', value: 'LOW', availableValues: ['LOW', 'HIGH'] }), { kind: 'cycle' }); // OFF implicite
+  assert.deepEqual(V.control({ componentType: 'CIRCULATION_PUMP', value: 'LOW', availableValues: ['OFF', 'LOW', 'HIGH'] }), { kind: 'switch', onValue: 'HIGH' });
+  assert.deepEqual(V.control({ componentType: 'CIRCULATION_PUMP', value: 'LOW', availableValues: ['LOW', 'HIGH'] }), { kind: 'switch', onValue: 'HIGH' }); // OFF implicite
   assert.equal(V.control({ componentType: 'CIRCULATION_PUMP', value: 'DISABLED', availableValues: ['OFF', 'HIGH'] }), null);
   assert.equal(V.control({ componentType: 'PUMP', value: 'DISABLED', availableValues: ['OFF', 'ON'] }), null);
-  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'LOW', availableValues: ['LOW', 'HIGH'] }), { kind: 'cycle' }); // OFF implicite
+  assert.deepEqual(V.control({ componentType: 'PUMP', value: 'LOW', availableValues: ['LOW', 'HIGH'] }), { kind: 'switch', onValue: 'HIGH' }); // OFF implicite
   assert.equal(V.control({ componentType: 'LIGHT', value: 'ON', availableValues: ['ON'] }), null);
   assert.equal(V.control({ componentType: 'PUMP', value: 'OFF', availableValues: ['OFF'] }), null);
   assert.equal(V.control({ componentType: 'PUMP', value: 'ON' }), null);

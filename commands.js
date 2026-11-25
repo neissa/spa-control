@@ -36,11 +36,16 @@ var SpaCmd = (function () {
     return req(spaId, '/component-state', extra);
   }
 
-  // Cycle dans availableValues (hors DISABLED), du plus faible au plus fort, puis retour à OFF.
-  // Pompe : OFF est toujours dans le cycle (OFF -> LOW, car HIGH demandé depuis l'arrêt n'a rien fait lors des essais réels).
+  // Pompe / circulation : interrupteur. Allumée (toute valeur sauf OFF/DISABLED/absente) => OFF; éteinte => HIGH (sinon le niveau le plus fort disponible).
+  // Autres : cycle dans availableValues (hors DISABLED), du plus faible au plus fort, puis retour à OFF.
   function nextState(comp) {
     var av = comp && Array.isArray(comp.availableValues) ? comp.availableValues : [];
-    if (comp && PUMPS[comp.componentType]) av = av.concat('OFF');
+    if (comp && PUMPS[comp.componentType]) {
+      if (comp.value && comp.value !== 'OFF' && comp.value !== 'DISABLED') return 'OFF';
+      var on = ORDER.filter(function (v) { return v !== 'OFF' && av.indexOf(v) >= 0; });
+      if (!on.length) throw new Error('Aucun état suivant possible.');
+      return on.indexOf('HIGH') >= 0 ? 'HIGH' : on[on.length - 1];
+    }
     var list = ORDER.filter(function (v) { return av.indexOf(v) >= 0; });
     if (list.length < 2) throw new Error('Aucun état suivant possible.');
     return list[(list.indexOf(comp.value) + 1) % list.length]; // valeur inconnue (-1) => list[0] (OFF)

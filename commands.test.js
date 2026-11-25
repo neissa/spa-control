@@ -26,9 +26,10 @@ test('component: circulation sans deviceNumber, OFF toujours accepté, cycle OFF
   const c2 = { componentType: 'CIRCULATION_PUMP', port: '0', value: 'OFF', availableValues: ['LOW', 'HIGH'] };
   assert.equal(C.component(ID, c2, 'OFF').body.state, 'OFF');
   assert.throws(() => C.component(ID, c2, 'MED'), /non disponible/);
-  assert.equal(C.nextState(c3), 'LOW');
-  assert.equal(C.nextState(Object.assign({}, c3, { value: 'LOW' })), 'HIGH');
+  assert.equal(C.nextState(c3), 'HIGH'); // jamais LOW
+  assert.equal(C.nextState(Object.assign({}, c3, { value: 'LOW' })), 'OFF');
   assert.equal(C.nextState(Object.assign({}, c3, { value: 'HIGH' })), 'OFF');
+  assert.equal(C.nextState(c2), 'HIGH');
   const c1 = { componentType: 'CIRCULATION_PUMP', value: 'OFF', availableValues: ['OFF', 'HIGH'] };
   assert.equal(C.nextState(c1), 'HIGH'); assert.equal(C.nextState(Object.assign({}, c1, { value: 'HIGH' })), 'OFF');
 });
@@ -66,11 +67,16 @@ test('nextState: 3 listes', () => {
   assert.equal(n(['DISABLED', 'ON', 'OFF'], 'OFF'), 'ON');
   assert.equal(n(['OFF', 'LOW', 'MED', 'HIGH'], 'MED'), 'HIGH');
   const pn = (av, value) => C.nextState({ componentType: 'PUMP', availableValues: av, value });
-  assert.equal(pn(['LOW', 'HIGH'], 'OFF'), 'LOW'); // pompe sans OFF listé : cycle complet
-  assert.equal(pn(['LOW', 'HIGH'], 'LOW'), 'HIGH');
+  // pompe : interrupteur, éteinte => HIGH (jamais LOW), allumée (même LOW) => OFF
+  assert.equal(pn(['LOW', 'HIGH'], 'OFF'), 'HIGH'); // sans OFF listé
+  assert.equal(pn(['LOW', 'HIGH'], 'LOW'), 'OFF');
   assert.equal(pn(['LOW', 'HIGH'], 'HIGH'), 'OFF');
-  assert.equal(pn(['HIGH'], 'OFF'), 'HIGH'); // sinon le plus faible niveau
-  assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'OFF'), 'LOW');
+  assert.equal(pn(['HIGH'], 'OFF'), 'HIGH');
+  assert.equal(pn(['OFF', 'ON'], 'OFF'), 'ON');
+  assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'OFF'), 'HIGH');
+  assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'LOW'), 'OFF');
+  assert.equal(pn(['OFF', 'LOW', 'MED', 'HIGH'], 'MED'), 'OFF');
+  assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'HIGH'), 'OFF');
   assert.throws(() => C.nextState({ availableValues: ['DISABLED'], value: 'DISABLED' }), /suivant/);
 });
 

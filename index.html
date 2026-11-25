@@ -852,7 +852,7 @@ async function doCmd(d) {
       if (!k.control) throw new Error(`${k.label} : commande indisponible (composant non identifiable ou sans état Éteint).`);
       const c = k.control, to = d.cmd === 'next' ? SpaCmd.nextState(k.comp) : k.on ? 'OFF' : c.onValue;
       const req = SpaCmd.component(id, k.comp, to);
-      return { req, desc: `${k.label} → ${lv(to)}`, judge: n => compOutcome(k.label, k.value, cmdComp(n, id, d.key), req.body.state) };
+      return { req, desc: `${k.label} → ${c.kind === 'switch' && k.kind === 'pump' ? (to === 'OFF' ? 'Éteint' : 'Allumé') : lv(to)}`, judge: n => compOutcome(k.label, k.value, cmdComp(n, id, d.key), req.body.state) };
     });
     case 'tdn': case 'tup': { const l = own(store('live'), id); if (!l) return; const t = SpaView.temps(l.state); const cur = ui.draft[id] ?? t.setF; if (cur == null) return; ui.draft[id] = cur + (d.cmd === 'tup' ? 1 : -1); return safeRender(); }
     case 'tapply': return run(id, 'temp', s => {

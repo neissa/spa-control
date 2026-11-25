@@ -38,13 +38,17 @@ var SpaView = (function () {
     return out;
   }
 
-  // Contrôle proposé pour un composant : interrupteur (OFF + un état), bouton à niveaux (>= 3 états) ou rien. Même liste que SpaCmd.allOff + circulation (pilotable, mais exclue de allOff).
+  // Contrôle proposé pour un composant : interrupteur (OFF + un état; toujours pour les pompes), bouton à niveaux (autres, >= 3 états) ou rien. Même liste que SpaCmd.allOff + circulation (pilotable, mais exclue de allOff).
   // Pompe (et circulation, sans port requis) : OFF est toujours possible (essai réel), même absent de availableValues.
   var PILOT = ['PUMP', 'CIRCULATION_PUMP', 'LIGHT', 'BLOWER', 'MISTER', 'AUX', 'MICROSILK'];
   function control(c) {
     if (!c || PILOT.indexOf(c.componentType) < 0 || c.value === 'DISABLED') return null;
     var av = (Array.isArray(c.availableValues) ? c.availableValues : []).filter(function (v) { return v !== 'DISABLED'; });
-    if ((c.componentType === 'PUMP' || c.componentType === 'CIRCULATION_PUMP') && av.indexOf('OFF') < 0 && av.length) av = ['OFF'].concat(av);
+    // Pompes : toujours un interrupteur Éteint / Allumé (jamais de niveaux). Allumer = HIGH (LOW depuis l'arrêt donne HIGH de toute façon), sinon le niveau le plus fort.
+    if (c.componentType === 'PUMP' || c.componentType === 'CIRCULATION_PUMP') {
+      var on = av.filter(function (v) { return v !== 'OFF'; });
+      return on.length ? { kind: 'switch', onValue: on.indexOf('HIGH') >= 0 ? 'HIGH' : on[on.length - 1] } : null;
+    }
     if (av.indexOf('OFF') < 0 || av.length < 2) return null;
     return av.length === 2 ? { kind: 'switch', onValue: av.filter(function (v) { return v !== 'OFF'; })[0] } : { kind: 'cycle' };
   }
