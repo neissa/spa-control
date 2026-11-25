@@ -26,10 +26,10 @@ test('component: circulation sans deviceNumber, OFF toujours accepté, cycle OFF
   const c2 = { componentType: 'CIRCULATION_PUMP', port: '0', value: 'OFF', availableValues: ['LOW', 'HIGH'] };
   assert.equal(C.component(ID, c2, 'OFF').body.state, 'OFF');
   assert.throws(() => C.component(ID, c2, 'MED'), /non disponible/);
-  assert.equal(C.nextState(c3), 'HIGH'); // jamais LOW
+  assert.equal(C.nextState(c3), 'LOW'); // HIGH depuis l'arrêt est ignoré par les pompes à trois niveaux : LOW les allume
   assert.equal(C.nextState(Object.assign({}, c3, { value: 'LOW' })), 'OFF');
   assert.equal(C.nextState(Object.assign({}, c3, { value: 'HIGH' })), 'OFF');
-  assert.equal(C.nextState(c2), 'HIGH');
+  assert.equal(C.nextState(c2), 'LOW');
   const c1 = { componentType: 'CIRCULATION_PUMP', value: 'OFF', availableValues: ['OFF', 'HIGH'] };
   assert.equal(C.nextState(c1), 'HIGH'); assert.equal(C.nextState(Object.assign({}, c1, { value: 'HIGH' })), 'OFF');
 });
@@ -67,13 +67,13 @@ test('nextState: 3 listes', () => {
   assert.equal(n(['DISABLED', 'ON', 'OFF'], 'OFF'), 'ON');
   assert.equal(n(['OFF', 'LOW', 'MED', 'HIGH'], 'MED'), 'HIGH');
   const pn = (av, value) => C.nextState({ componentType: 'PUMP', availableValues: av, value });
-  // pompe : interrupteur, éteinte => HIGH (jamais LOW), allumée (même LOW) => OFF
-  assert.equal(pn(['LOW', 'HIGH'], 'OFF'), 'HIGH'); // sans OFF listé
+  // pompe : interrupteur, éteinte => LOW si LOW et HIGH existent (HIGH est ignoré depuis l'arrêt), HIGH si c'est le seul état allumé, allumée (même LOW) => OFF
+  assert.equal(pn(['LOW', 'HIGH'], 'OFF'), 'LOW'); // sans OFF listé
   assert.equal(pn(['LOW', 'HIGH'], 'LOW'), 'OFF');
   assert.equal(pn(['LOW', 'HIGH'], 'HIGH'), 'OFF');
   assert.equal(pn(['HIGH'], 'OFF'), 'HIGH');
   assert.equal(pn(['OFF', 'ON'], 'OFF'), 'ON');
-  assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'OFF'), 'HIGH');
+  assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'OFF'), 'LOW');
   assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'LOW'), 'OFF');
   assert.equal(pn(['OFF', 'LOW', 'MED', 'HIGH'], 'MED'), 'OFF');
   assert.equal(pn(['OFF', 'LOW', 'HIGH'], 'HIGH'), 'OFF');
@@ -257,4 +257,12 @@ test('route: liste blanche des écritures (le seul chemin racine est c8zone/stat
   assert.equal(C.route({ path: '/spa-schedules/zz', method: 'DELETE' }), null);
   assert.equal(C.route({ path: '/component-state' }), null);
   assert.equal(C.route(null), null); assert.equal(C.route({}), null); assert.equal(C.route('x'), null);
+});
+
+test("pompes : on allume avec LOW si la pompe propose LOW et HIGH, avec HIGH sinon (essais réels : HIGH est ignoré depuis l'arrêt sur 3 niveaux)", () => {
+  const p3 = { componentType: 'PUMP', port: 1, value: 'OFF', availableValues: ['OFF', 'LOW', 'HIGH'] };
+  const p2 = { componentType: 'PUMP', port: 0, value: 'OFF', availableValues: ['OFF', 'HIGH'] };
+  assert.equal(C.component(ID, p3, C.nextState(p3)).body.state, 'LOW');
+  assert.equal(C.component(ID, p2, C.nextState(p2)).body.state, 'HIGH');
+  assert.equal(C.component(ID, Object.assign({}, p3, { value: 'HIGH' }), C.nextState(Object.assign({}, p3, { value: 'HIGH' }))).body.state, 'OFF');
 });

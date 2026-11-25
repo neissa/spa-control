@@ -44,7 +44,8 @@ var SpaCmd = (function () {
       if (comp.value && comp.value !== 'OFF' && comp.value !== 'DISABLED') return 'OFF';
       var on = ORDER.filter(function (v) { return v !== 'OFF' && av.indexOf(v) >= 0; });
       if (!on.length) throw new Error('Aucun état suivant possible.');
-      return on.indexOf('HIGH') >= 0 ? 'HIGH' : on[on.length - 1];
+      // HIGH depuis l'arrêt est ignoré par les pompes à trois niveaux (essais réels) : LOW les allume (elles passent en fort).
+      return on.indexOf('HIGH') >= 0 ? (on.indexOf('LOW') >= 0 ? 'LOW' : 'HIGH') : on[on.length - 1];
     }
     var list = ORDER.filter(function (v) { return av.indexOf(v) >= 0; });
     if (list.length < 2) throw new Error('Aucun état suivant possible.');

@@ -143,3 +143,8 @@ Relevée dans l'application officielle et confirmée par les messages de validat
 
 ### Essai réel de la Clim8Zone depuis la page (25/11/2026, spa à passerelle 1.16)
 `POST https://iot.controlmyspa.com/spa-commands/c8zone/state` `{spaId, via:"MOBILE", speedState:"C8Z_SPEED_SILENT"}` puis `"C8Z_SPEED_SMART"` : appliqué et confirmé par la relecture de `current-c8z` en ~4,5 s chaque fois, retour à l'état de départ vérifié. C'est le seul réglage qui s'applique sur ce spa, dont la consigne, le mode de chauffe, le format de l'heure et le verrouillage du panneau sont acceptés (HTTP 200) sans effet : la Clim8Zone passe par un autre chemin que le contrôleur principal. Le mode (`modeState`) et le chauffage d'appoint (`heaterState`) n'ont pas été essayés (mode laissé `C8Z_MODE_DISABLED`). CORS ouvert sur cette route (origine quelconque).
+
+### Allumer une pompe : règle finale (25/11/2026)
+- **Pompe à trois niveaux** (`availableValues` OFF/LOW/HIGH, spa à passerelle 1.16) : `state:"HIGH"` depuis l'arrêt est **ignoré** (4 essais : pompe 2 trois fois, pompe 3 une fois, HTTP 200 mais aucun changement après 20 s) ; `state:"LOW"` l'allume et elle passe en `HIGH` en 2 à 4 s (essais répétés sur trois pompes, dont deux cycles complets depuis la page).
+- **Pompe à deux états** (OFF/HIGH, spa à passerelle 1133/129) : `state:"HIGH"` l'allume en ~2,4 s.
+- **Interface** : toujours un simple interrupteur Éteint / Allumé, sans niveau affiché. Allumer envoie `HIGH` si la pompe n'a que cet état allumé, `LOW` si elle propose `LOW` et `HIGH` ; éteindre envoie `OFF`. Les messages disent « Allumé » / « Éteint (confirmé par le spa) », jamais le niveau demandé.

@@ -44,10 +44,12 @@ var SpaView = (function () {
   function control(c) {
     if (!c || PILOT.indexOf(c.componentType) < 0 || c.value === 'DISABLED') return null;
     var av = (Array.isArray(c.availableValues) ? c.availableValues : []).filter(function (v) { return v !== 'DISABLED'; });
-    // Pompes : toujours un interrupteur Éteint / Allumé (jamais de niveaux). Allumer = HIGH (LOW depuis l'arrêt donne HIGH de toute façon), sinon le niveau le plus fort.
+    // Pompes : toujours un interrupteur Éteint / Allumé (jamais de niveaux affichés). Allumer = HIGH sur une pompe à deux états ; sur une pompe qui propose aussi LOW,
+    // HIGH demandé depuis l'arrêt est ignoré par le spa (essais réels) alors que LOW l'allume en fort : on envoie LOW.
     if (c.componentType === 'PUMP' || c.componentType === 'CIRCULATION_PUMP') {
       var on = av.filter(function (v) { return v !== 'OFF'; });
-      return on.length ? { kind: 'switch', onValue: on.indexOf('HIGH') >= 0 ? 'HIGH' : on[on.length - 1] } : null;
+      var hi = on.indexOf('HIGH') >= 0;
+      return on.length ? { kind: 'switch', onValue: hi && on.indexOf('LOW') >= 0 ? 'LOW' : hi ? 'HIGH' : on[on.length - 1] } : null;
     }
     if (av.indexOf('OFF') < 0 || av.length < 2) return null;
     return av.length === 2 ? { kind: 'switch', onValue: av.filter(function (v) { return v !== 'OFF'; })[0] } : { kind: 'cycle' };

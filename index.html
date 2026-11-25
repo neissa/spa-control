@@ -786,13 +786,16 @@ async function run(id, ck, build, maxMs) {
 }
 const lv = x => own(V, x) || x;
 // Texte du résultat d'une commande de composant (null tant que la valeur relue n'a pas changé). `changed` = information neutre, pas une erreur.
-function outcomeText(label, o, target) {
+// `simple` (pompe en interrupteur) : on ne parle que d'Allumé / Éteint, jamais de niveau ; n'importe quel état allumé confirme une demande d'allumage.
+function outcomeText(label, o, target, simple) {
+  const onTxt = v => v === 'OFF' ? 'Éteint' : 'Allumé';
+  if (simple && (o.status === 'confirmed' || (o.status === 'changed' && o.actual !== 'OFF' && target !== 'OFF'))) return `${label} : ${onTxt(o.actual)} (confirmé par le spa)`;
   if (o.status === 'confirmed') return `${label} : ${o.actual} (confirmé par le spa)`;
   if (o.status === 'changed') return `${label} : ${o.actual} (niveau demandé : ${target}, le spa a choisi ${o.actual})`;
   return null;
 }
-const compOutcome = (label, before, m, target) => {
-  const t = m && outcomeText(label, SpaView.outcome(before, m.value, target), target);
+const compOutcome = (label, before, m, target, simple) => {
+  const t = m && outcomeText(label, SpaView.outcome(before, m.value, target), target, simple);
   return t ? { msg: t, kind: 'info' } : null;
 };
 const cmdComp = (s, id, key) => SpaView.components(s, pumpLabels(id)).find(x => x.key === key);
@@ -852,7 +855,7 @@ async function doCmd(d) {
       if (!k.control) throw new Error(`${k.label} : commande indisponible (composant non identifiable ou sans état Éteint).`);
       const c = k.control, to = d.cmd === 'next' ? SpaCmd.nextState(k.comp) : k.on ? 'OFF' : c.onValue;
       const req = SpaCmd.component(id, k.comp, to);
-      return { req, desc: `${k.label} → ${c.kind === 'switch' && k.kind === 'pump' ? (to === 'OFF' ? 'Éteint' : 'Allumé') : lv(to)}`, judge: n => compOutcome(k.label, k.value, cmdComp(n, id, d.key), req.body.state) };
+      return { req, desc: `${k.label} → ${c.kind === 'switch' && k.kind === 'pump' ? (to === 'OFF' ? 'Éteint' : 'Allumé') : lv(to)}`, judge: n => compOutcome(k.label, k.value, cmdComp(n, id, d.key), req.body.state, c.kind === 'switch' && k.kind === 'pump') };
     });
     case 'tdn': case 'tup': { const l = own(store('live'), id); if (!l) return; const t = SpaView.temps(l.state); const cur = ui.draft[id] ?? t.setF; if (cur == null) return; ui.draft[id] = cur + (d.cmd === 'tup' ? 1 : -1); return safeRender(); }
     case 'tapply': return run(id, 'temp', s => {
