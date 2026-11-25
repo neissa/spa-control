@@ -105,3 +105,22 @@ Les deux spas du compte ne réagissent pas pareil aux commandes de **réglage**.
 
 - Activer le cycle 2 le met en marche tout de suite si l'heure actuelle tombe dans sa plage (pompe et ozone se sont allumés avec lui).
 - Le cycle 1 n'a aucune commande d'activation (API et portail).
+
+## Routes de l'application mobile officielle (Control My Spa 4.1.13, relevées dans l'APK, 25/11/2026)
+Même hôte `https://iot.controlmyspa.com`, **sans préfixe `/web`**, commandes avec `via:"MOBILE"`. Le jeton du portail web est accepté par ces routes. Liste extraite des chaînes du code de l'application (rien d'exécuté) ; les corps de requête ne sont pas tous connus.
+
+| Domaine | Routes |
+|---|---|
+| Compte | `POST /auth/login`, `/auth/refresh`, `/auth/signup`, `/auth/get-otp`, `/auth/forgot-password`, `/auth/check-email-availability` ; `/user-management/profile`, `/user-management/profile/device`, `/user-agreements/current`, `/user-agreements/agree`, `/tacs/current`, `/account-deletion-requests` |
+| Spas | `GET /spas/owned`, `GET /spas/{id}/dashboard`, `/spas/claim`, `/spas/check-availability`, `/spas/set-default`, `/spas/{id}/set-default`, `/spas/{id}/alias`, `/spas/{id}/unlink` |
+| Commandes | `/spa-commands/component-state`, `/panel/state`, `/time`, `/temperature/{value,range,scale,heater-mode}`, `/filter-cycles/{schedule,toggle-filter2-state}`, `/c8zone/state`, `/chromozone/{state,power,color,speed,intensity}` |
+| Programmes | `/spa-schedules`, `/spa-schedules/findBySpa/{id}`, `/spa-schedules/{id}`, `/spa-schedules/{id}/status`, `/spa-schedules/{id}/trigger` |
+| Journaux | `GET /events/by-spa/{id}`, `GET /fault-logs/by-spa/{id}` |
+| Firmware | `GET /ota-update-rules/by-spa/{id}`, `POST /ota-update-rules/approve/{rule_id}` (le propriétaire approuve une mise à jour proposée ; `hasOtaUpdate` du tableau de bord) |
+| Autres | `/notifications`, `/notifications/{id}/read`, `/remote-sessions/incoming`, `/remote-sessions/{id}/{approve,cancel,decline}` (accès à distance du revendeur), `/measurements`, `/waterbodies` (chimie de l'eau) |
+
+- **Aucune commande de redémarrage** (passerelle ou agent) dans l'application : seul le revendeur ou le constructeur peut redémarrer à distance (les noms `REBOOT_GATEWAY` / `RESTART_AGENT` existent côté serveur). Les routes `/spa-commands/reboot*` et `/restart-agent` essayées répondent 404.
+- `GET /spas/{id}/dashboard` apporte en plus du portail : `systemInfo.pingTime`, `systemInfo.buildNumber`, `hasOtaUpdate`, `totalAlerts`, `currentFaultMessage` (code, description, gravité), `isOnHold`, `rangeLimits`, `isMilitaryTime`, `isPanelLocked`, `alias`.
+- L'état brut du portail (`/web/spas/{id}/current-state`) expose aussi `ethernetPluggedIn` et `rs485AcquiredAddress`. Sur le spa à passerelle 1.16 qui ignore les réglages, `rs485AcquiredAddress` vaut 0 (17 sur l'autre spa) et `ethernetPluggedIn` est faux.
+- L'application contient aussi un parcours Bluetooth (`BLUETOOTH_VIEW_…`) pour configurer la passerelle ; non étudié.
+- Essai : la consigne envoyée par ce canal (`via:"MOBILE"`) sur le spa …0009 est acceptée (HTTP 200) mais sans effet, comme par le canal web.
