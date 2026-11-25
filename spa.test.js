@@ -221,3 +221,13 @@ test('c8zView: absente => null ; textes français sans valeur brute', () => {
   const u = V.c8zView({ c8zStatus: 'QUELQUE_CHOSE', c8zMode: 'C8Z_MODE_X' });
   assert.equal(u.statusText, 'état inconnu'); assert.equal(u.modeText, null); assert.equal(u.auxText, null);
 });
+
+test("c8zView: le chauffage d'appoint n'agit que si le mode chauffe (auxActive)", () => {
+  const ok = m => V.c8zView({ c8zStatus: 'C8Z_STATUS_CONNECTED', c8zMode: m }).auxActive;
+  assert.equal(ok('C8Z_MODE_HEAT'), true);
+  assert.equal(ok('C8Z_MODE_BOTH'), true);
+  assert.equal(ok('C8Z_MODE_DISABLED'), false);
+  assert.equal(ok('C8Z_MODE_COOL'), false);
+  assert.equal(ok('C8Z_MODE_INCONNU'), null); // mode inconnu : on ne dit rien
+  assert.equal(ok(undefined), null);
+});

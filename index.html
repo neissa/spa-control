@@ -500,8 +500,10 @@ const Z_CMD = { c8zm: ['mode', 'c8zMode', 'Mode'], c8zs: ['speed', 'c8zSpeed', '
 function c8zRows(id, z) {
   const v = SpaView.c8zView(z); if (!v) return '';
   const grp = (cmd, title, kind, cur) => `<div class="row blk"><strong>${title}</strong><div class=ctl>${seg(id, 'c8z', cmd, 'Clim8Zone : ' + title.toLowerCase(), Z_OPTS[kind], cur, { cls: Z_OPTS[kind].length > 3 ? 'n4' : 'n3', pend: true })}</div><p class=sub style="margin:8px 0 0">${esc(own(Z_TXT, cur) || 'Réglage inconnu.')}</p></div>`;
+  // Le chauffage d'appoint n'agit que si le mode chauffe : sinon on le dit (texte, pas seulement un style) sous le groupe.
+  const auxNote = v.auxActive === false ? `<p class=sub role=note style="margin:8px 0 0"><strong>Sans effet pour l'instant.</strong> Le chauffage d'appoint ne fonctionne que si le mode est « Chauffage » ou « Chauffage et froid ».</p>` : '';
   return row('Clim8Zone', esc(v.statusText)) + (v.auxText ? row("Chauffage d'appoint en cours", esc(v.auxText)) : '') +
-    grp('c8zm', 'Mode de la Clim8Zone', 'mode', v.mode) + grp('c8zs', 'Vitesse de la Clim8Zone', 'speed', v.speed) + grp('c8zh', "Chauffage d'appoint", 'heater', v.heater);
+    grp('c8zm', 'Mode de la Clim8Zone', 'mode', v.mode) + grp('c8zs', 'Vitesse de la Clim8Zone', 'speed', v.speed) + grp('c8zh', "Chauffage d'appoint", 'heater', v.heater).replace(/<\/div>$/, auxNote + '</div>');
 }
 // Ligne discrète de la carte du tableau de bord (sans contrôle).
 function c8zLine(z) {

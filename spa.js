@@ -160,6 +160,8 @@ var SpaView = (function () {
       status: z.c8zStatus, statusText: t(Z_STATUS, z.c8zStatus) || 'état inconnu',
       auxText: hs == null ? null : hs === 'OFF' ? 'arrêté' : 'en marche',
       mode: z.c8zMode || null, speed: z.c8zSpeed || null, heater: z.c8zHeater || null,
+      // Le chauffage d'appoint ne fonctionne que si le mode chauffe : vrai (Chauffage, Chauffage et froid), faux (Désactivée, Froid), null si le mode est inconnu.
+      auxActive: z.c8zMode === 'C8Z_MODE_HEAT' || z.c8zMode === 'C8Z_MODE_BOTH' ? true : t(Z_MODE, z.c8zMode) ? false : null,
       modeText: t(Z_MODE, z.c8zMode), speedText: t(Z_SPEED, z.c8zSpeed), heaterText: t(Z_HEAT, z.c8zHeater)
     };
   }
