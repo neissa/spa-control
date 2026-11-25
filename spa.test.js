@@ -209,3 +209,15 @@ test('errorChange: 0<->38 silencieux, autres changements journalisés', () => {
   assert.equal(V.errorChange(38, 12), 'code erreur 38 -> 12');
   assert.equal(V.errorChange(null, 12), 'code erreur 0 -> 12');
 });
+
+test('c8zView: absente => null ; textes français sans valeur brute', () => {
+  assert.equal(V.c8zView(null), null); assert.equal(V.c8zView({}), null); assert.equal(V.c8zView({ c8zStatus: 'C8Z_STATUS_NOT_PRESENT' }), null);
+  const a = V.c8zView({ c8zHeater: 'C8Z_HEATER_M7', c8zMode: 'C8Z_MODE_DISABLED', c8zSpeed: 'C8Z_SPEED_SMART', c8zHeaterState: 'OFF', c8zStatus: 'C8Z_STATUS_CONNECTED' });
+  assert.deepEqual([a.statusText, a.auxText, a.modeText, a.speedText, a.heaterText], ['connectée', 'arrêté', 'Désactivée', 'Intelligente', 'E-Boost (M7)']);
+  assert.equal(V.c8zView({ c8zStatus: 'C8Z_STATUS_DEFROST', c8zHeaterState: 'ON' }).statusText, 'en dégivrage');
+  assert.equal(V.c8zView({ c8zStatus: 'C8Z_STATUS_DEFROST', c8zHeaterState: 'ON' }).auxText, 'en marche');
+  assert.equal(V.c8zView({ c8zStatus: 'C8Z_STATUS_COMMLOST' }).statusText, 'communication perdue');
+  assert.equal(V.c8zView({ c8zStatus: 'C8Z_STATUS_ERROR' }).statusText, 'erreur');
+  const u = V.c8zView({ c8zStatus: 'QUELQUE_CHOSE', c8zMode: 'C8Z_MODE_X' });
+  assert.equal(u.statusText, 'état inconnu'); assert.equal(u.modeText, null); assert.equal(u.auxText, null);
+});

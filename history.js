@@ -11,13 +11,16 @@ var SpaHist = (function () {
   var VAL = { OFF: 'Éteint', ON: 'Allumé', HIGH: 'Fort', MED: 'Moyen', MEDIUM: 'Moyen', LOW: 'Doux', DISABLED: 'Désactivé' };
   var MODE = { READY: 'Prêt', REST: 'Repos', READY_REST: 'Prêt en repos' };
   var RANGE = { LOW: 'Basse', HIGH: 'Haute' };
+  var Z = { mode: { C8Z_MODE_DISABLED: 'Désactivée', C8Z_MODE_HEAT: 'Chauffage', C8Z_MODE_COOL: 'Froid', C8Z_MODE_BOTH: 'Chauffage et froid' }, speed: { C8Z_SPEED_SMART: 'Intelligente', C8Z_SPEED_SILENT: 'Silencieuse', C8Z_SPEED_POWERFUL: 'Puissante' }, heater: { C8Z_HEATER_DISABLED: 'Désactivé', C8Z_HEATER_AUTO: 'Automatique', C8Z_HEATER_CONTINUOUS: 'Continu', C8Z_HEATER_M7: 'E-Boost (M7)' } };
+  var ZNAME = { mode: 'mode', speed: 'vitesse', heater: "chauffage d'appoint" };
+  var ZKEYS = [['mode', 'c8zMode'], ['speed', 'c8zSpeed'], ['heater', 'c8zHeater']];
   var txt = function (v) { return typeof v === 'string' && v !== '' ? v : null; };
   var lbl = function (t, v) { return Object.hasOwn(t, v) ? t[v] : v; };
 
   // Valeurs suivies : mode de chauffe, plage, et valeur de chaque composant identifiable (clé « TYPE:port », comme SpaView.components).
   // Une clé portée par deux composants est ambiguë : ignorée (pas de faux changement).
-  function snapshot(state) {
-    state = state || {};
+  function snapshot(state, c8z) {
+    state = state || {}; c8z = c8z && typeof c8z === 'object' ? c8z : {};
     var list = (Array.isArray(state.components) ? state.components : []).filter(function (c) { return c && typeof c === 'object' && TYPES.indexOf(c.componentType) >= 0; });
     var seen = {}, count = {}, comps = {};
     var keys = list.map(function (c) {
@@ -25,7 +28,9 @@ var SpaHist = (function () {
       count[k] = (count[k] || 0) + 1; return k;
     });
     list.forEach(function (c, j) { var v = txt(c.value); if (count[keys[j]] === 1 && v) comps[keys[j]] = v; });
-    return { mode: txt(state.heaterMode), range: txt(state.tempRange), comps: comps };
+    var z = {};
+    ZKEYS.forEach(function (p) { var v = txt(c8z[p[1]]); if (v) z[p[0]] = v; });
+    return { mode: txt(state.heaterMode), range: txt(state.tempRange), comps: comps, c8z: z };
   }
 
   // Conserve la dernière valeur connue d'un élément absent d'une réponse partielle.
@@ -33,7 +38,9 @@ var SpaHist = (function () {
     var p = prev && typeof prev === 'object' ? prev : {}, comps = {};
     Object.keys(p.comps && typeof p.comps === 'object' ? p.comps : {}).forEach(function (k) { if (txt(p.comps[k])) comps[k] = p.comps[k]; });
     Object.keys(next.comps).forEach(function (k) { comps[k] = next.comps[k]; });
-    return { mode: next.mode || txt(p.mode), range: next.range || txt(p.range), comps: comps };
+    var pz = p.c8z && typeof p.c8z === 'object' ? p.c8z : {}, nz = next.c8z && typeof next.c8z === 'object' ? next.c8z : {}, z = {};
+    ZKEYS.forEach(function (q) { var v = txt(nz[q[0]]) || txt(pz[q[0]]); if (v) z[q[0]] = v; });
+    return { mode: next.mode || txt(p.mode), range: next.range || txt(p.range), comps: comps, c8z: z };
   }
 
   // Changements entre deux relevés. Premier relevé (prev nul) : rien. Valeur absente d'un côté : rien.
@@ -44,6 +51,8 @@ var SpaHist = (function () {
     add('mode', prev.mode, next.mode); add('range', prev.range, next.range);
     var pc = prev.comps && typeof prev.comps === 'object' ? prev.comps : {}, nc = next.comps && typeof next.comps === 'object' ? next.comps : {};
     Object.keys(nc).forEach(function (k) { if (Object.hasOwn(pc, k)) add('comp:' + k, pc[k], nc[k]); });
+    var pz = prev.c8z && typeof prev.c8z === 'object' ? prev.c8z : {}, nz = next.c8z && typeof next.c8z === 'object' ? next.c8z : {};
+    ZKEYS.forEach(function (q) { add('c8z:' + q[0], pz[q[0]], nz[q[0]]); });
     return out;
   }
 
@@ -118,6 +127,7 @@ var SpaHist = (function () {
   function kind(c) {
     var k = c && typeof c.k === 'string' ? c.k : '';
     if (k === 'mode' || k === 'range') return k;
+    if (/^c8z:/.test(k)) return 'c8z';
     if (/^comp:(PUMP|CIRCULATION_PUMP):/.test(k)) return 'pump';
     if (/^comp:LIGHT:/.test(k)) return 'light';
     return 'other';
@@ -125,6 +135,8 @@ var SpaHist = (function () {
 
   // « Pompe 2 : Éteint → Fort ». labelOf(« PUMP:2 ») -> nom affiché (noms personnalisés); sinon nom du type.
   function describe(c, labelOf) {
+    var zm = /^c8z:(mode|speed|heater)$/.exec(c.k);
+    if (zm) { var zl = function (v) { return Object.hasOwn(Z[zm[1]], v) ? Z[zm[1]][v] : 'valeur inconnue'; }; return 'Clim8Zone — ' + ZNAME[zm[1]] + ' : ' + zl(c.f) + ' → ' + zl(c.t); }
     var f = lbl(VAL, c.f), t = lbl(VAL, c.t);
     if (c.k === 'mode') return 'Mode de chauffe : ' + lbl(MODE, c.f) + ' → ' + lbl(MODE, c.t);
     if (c.k === 'range') return 'Plage : ' + lbl(RANGE, c.f) + ' → ' + lbl(RANGE, c.t);

@@ -75,6 +75,11 @@
   .seg button+button{border-left:1px solid var(--water)}
   .seg button[aria-pressed=true]{background:var(--water);color:var(--on-water);font-weight:700}
   .seg button[aria-pressed=true]::before{content:'✓ '}
+  /* Clim8Zone : étroit, 4 choix en grille 2 × 2 et 3 choix empilés (libellés entiers, segments toujours groupés par le même cadre) */
+  @media (max-width:560px){
+    .seg.n4{flex-wrap:wrap}.seg.n4 button{flex:1 1 50%}.seg.n4 button:nth-child(3){border-left:0}.seg.n4 button:nth-child(n+3){border-top:1px solid var(--water)}
+    .seg.n3{flex-direction:column}.seg.n3 button+button{border-left:0;border-top:1px solid var(--water)}
+  }
   .stp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .stp .round{width:44px;padding:0;justify-content:center;font-size:24px;border-radius:22px}
   .stp output{min-width:5.5em;text-align:center;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -200,18 +205,18 @@ async function get(path, retry = true) {
   if (!r.ok) throw new Error(`${path} -> ${r.status}`);
   return (await r.json()).data;
 }
-// Liste blanche : uniquement les routes de docs/API.md. req = {path, body} construit par SpaCmd.
-const CMD_PATHS = new Set(['/component-state', '/panel/state', '/temperature/value', '/temperature/heater-mode', '/temperature/range', '/temperature/scale', '/time', '/filter-cycles/schedule', '/filter-cycles/toggle-filter2-state']);
-// Programmes : méthode + chemin exacts (id hexadécimal de 24 caractères), construits par SpaCmd.schedule*.
-const SCHED_ROUTES = [['POST', /^\/spa-schedules$/], ['PATCH', /^\/spa-schedules\/[0-9a-f]{24}$/i], ['POST', /^\/spa-schedules\/[0-9a-f]{24}\/trigger$/i], ['DELETE', /^\/spa-schedules\/[0-9a-f]{24}$/i]];
+// Liste blanche : SpaCmd.route(req) (commands.js, testée) ne laisse passer que les routes de docs/API.md :
+// 'cmd' = /web/spa-commands + chemin, 'sched' = /web + chemin (méthode explicite), 'root' = hôte SANS /web, seul chemin /spa-commands/c8zone/state en POST (Clim8Zone, via MOBILE).
+const ROOT_API = 'https://iot.controlmyspa.com';
 async function command(req, retry = true) {
-  const sched = !!req && !!req.method && typeof req.path === 'string' && SCHED_ROUTES.some(([m, rx]) => m === req.method && rx.test(req.path));
-  const cmd = !!req && !req.method && CMD_PATHS.has(req.path);
-  if (!(sched || cmd) || (req.method !== 'DELETE' && !req.body)) throw new Error('Commande non autorisée.');
+  const kind = SpaCmd.route(req);
+  if (!kind) throw new Error('Commande non autorisée.');
+  const sched = kind === 'sched';
   const t = store('tokens'); if (!t) throw new Error('non connecté');
   const hasBody = req.method !== 'DELETE', headers = { authorization: 'Bearer ' + t.access };
   if (hasBody) headers['content-type'] = 'application/json';
-  const r = await fetch(sched ? API + req.path : `${API}/spa-commands${req.path}`, { method: sched ? req.method : 'POST', headers, body: hasBody ? JSON.stringify(req.body) : undefined });
+  const url = kind === 'root' ? ROOT_API + req.path : sched ? API + req.path : `${API}/spa-commands${req.path}`;
+  const r = await fetch(url, { method: sched ? req.method : 'POST', headers, body: hasBody ? JSON.stringify(req.body) : undefined });
   if (r.status === 401 && retry) { await post('/auth/refresh', { refreshToken: t.refresh }); return command(req, false); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((j.error && j.error.message) || j.message || `refusée par le portail (${r.status})`);
@@ -234,10 +239,10 @@ function loadHist(now) { // JSON corrompu ou mal formé : ignoré
   return { hist, snap, changes: SpaHist.prune((Array.isArray(c) ? c : []).filter(SpaHist.isChange), now, HIST.chAgeMs, HIST.chN) };
 }
 // Spa hors ligne ou état déjà vu (même updatedAt) : aucun point ni changement. Premier relevé d'un spa : aucun changement.
-function recordHist(h, id, state, prevState, now) {
+function recordHist(h, id, state, prevState, now, c8z) {
   if (state.online === false) return false;
   if (state.updatedAt != null && prevState && prevState.updatedAt === state.updatedAt) return false;
-  const arr = h.hist[id] || (h.hist[id] = []), pt = SpaHist.point(state, now), snap = SpaHist.snapshot(state), before = own(h.snap, id) || null;
+  const arr = h.hist[id] || (h.hist[id] = []), pt = SpaHist.point(state, now), snap = SpaHist.snapshot(state, c8z), before = own(h.snap, id) || null;
   if (pt && SpaHist.shouldRecord(arr.at(-1), pt)) arr.push(pt);
   h.changes.push(...SpaHist.diff(before, snap, now, id));
   h.snap[id] = SpaHist.merge(before, snap);
@@ -279,7 +284,7 @@ async function poll() {
         const ec = prev && SpaView.errorChange(prev.err, x.err); if (ec) log(label(id), ec, id);
         all[id] = [...old, x].filter(v => v.ts > now - KEEP_MS);
         const pl = own(live, id);
-        try { if (recordHist(hs, id, state, pl && pl.state, now)) hsDirty = true; } catch (e) { /* l'historique ne bloque jamais les relevés */ }
+        try { if (recordHist(hs, id, state, pl && pl.state, now, c8z)) hsDirty = true; } catch (e) { /* l'historique ne bloque jamais les relevés */ }
         live[id] = { ts: now, state, c8z }; fresh.push(id);
       } catch (e) {
         if (authErr(e)) throw e;
@@ -416,9 +421,9 @@ function compCtl(id, k) {
   const b = !!ui.busy[kk(id, ck)], cur = own(V, k.value) || k.value || '—';
   return `<button class="btn lvl" ${dat('next', id, k.key)} aria-label="${esc(`${k.label} : ${cur}. Passer à ${own(V, nx) || nx}`)}"${busyAttr(b)}><span>${b ? 'Envoi…' : esc(cur)}</span><span class=nx aria-hidden=true>→ ${esc(own(V, nx) || nx)}</span></button>${hint(kk(id, ck))}`;
 }
-function seg(id, ck, cmd, lbl, opts, cur) {
-  const b = !!ui.busy[kk(id, ck)];
-  return `<div class=seg role=group aria-label="${esc(lbl)}">${opts.map(([v, l]) => `<button ${dat(cmd, id, v)} aria-pressed=${cur === v}${busyAttr(b)}>${esc(l)}</button>`).join('')}</div>${hint(kk(id, ck))}`;
+function seg(id, ck, cmd, lbl, opts, cur, o = {}) { // o.cls : variante de mise en page ; o.pend : aussi désactivé pendant la relecture de confirmation
+  const b = !!ui.busy[kk(id, ck)] || (!!o.pend && !!ui.pend[kk(id, ck)]);
+  return `<div class="seg${o.cls ? ' ' + o.cls : ''}" role=group aria-label="${esc(lbl)}">${opts.map(([v, l]) => `<button ${dat(cmd, id, v)} aria-pressed=${cur === v}${busyAttr(b)}>${esc(l)}</button>`).join('')}</div>${hint(kk(id, ck))}`;
 }
 const isLocked = st => st.panelLock === true || /^LOCK/.test(String(st.panelLock));
 const hasPanelLock = st => Object.hasOwn(st, 'panelLock') && st.panelLock != null; // clé absente => pas d'interrupteur
@@ -447,6 +452,7 @@ function dashboard(live, info, all, now) {
       <div class=temp>${esc(C(t.current))}${noFilt(x, t)}</div>${waterBar(t.current, t.set)}
       <div>Consigne ${esc(C(t.set))} · ${ht.active ? 'chauffe en cours' : 'pas de chauffe'}</div>
       <div class=kv><span>Mode ${val(ht.mode)}</span><span>Heure du spa ${esc(c.text)}</span><span>Dernier signal ${esc(ago(p.ageMin))}</span></div>
+      ${c8zLine(c8z)}
       <div class=kv><span>7 j : pompes ${h(r.runningS)}</span><span>chauffe ${h(r.heatingS)}</span><span>hors ligne ${h(r.offlineS)}</span></div>
       <div class=qa>${x.online ? '' : '<small>Spa hors ligne : commandes indisponibles.</small>'}<div class=ctl><strong>Nouvelle consigne</strong>${tempCtl(id, t, x)}</div>${quick}
         <button class=btn ${dat('alloff', id)}${busyAttr(ui.busy[kk(id, 'alloff')])}>${ui.busy[kk(id, 'alloff')] ? 'Envoi…' : 'Tout éteindre'}</button>${hint(kk(id, 'alloff'))}</div></section>`;
@@ -479,7 +485,32 @@ function logGroup(id, kind, title, fixed, mapRow, local) {
   return group(title, rows + row('<small>Relevé local (cet appareil)</small>', '') + local);
 }
 
-const c8zHtml = ht => ht.c8zStatus == null && ht.c8zState == null ? '—' : `${esc(SpaView.c8zText(ht.c8zStatus) ?? '—')}<small>chauffage C8Zone : ${val(ht.c8zState)} · lecture seule</small>`;
+// ---- Clim8Zone : sous-section du Chauffage (visible seulement si le module est présent) ----
+const Z_OPTS = {
+  mode: [['C8Z_MODE_DISABLED', 'Désactivée'], ['C8Z_MODE_HEAT', 'Chauffage'], ['C8Z_MODE_COOL', 'Froid'], ['C8Z_MODE_BOTH', 'Chauffage et froid']],
+  speed: [['C8Z_SPEED_SMART', 'Intelligente'], ['C8Z_SPEED_SILENT', 'Silencieuse'], ['C8Z_SPEED_POWERFUL', 'Puissante']],
+  heater: [['C8Z_HEATER_DISABLED', 'Désactivé'], ['C8Z_HEATER_AUTO', 'Automatique'], ['C8Z_HEATER_CONTINUOUS', 'Continu'], ['C8Z_HEATER_M7', 'E-Boost (M7)']]
+};
+const Z_TXT = {
+  C8Z_MODE_DISABLED: 'Désactivée : la Clim8Zone ne chauffe ni ne refroidit.', C8Z_MODE_HEAT: "Chauffage : la Clim8Zone chauffe l'eau.", C8Z_MODE_COOL: "Froid : la Clim8Zone refroidit l'eau.", C8Z_MODE_BOTH: "Chauffage et froid : la Clim8Zone chauffe ou refroidit l'eau.",
+  C8Z_SPEED_SMART: "Intelligente : la vitesse s'adapte à la demande.", C8Z_SPEED_SILENT: 'Silencieuse : plus discrète, chauffe plus lentement.', C8Z_SPEED_POWERFUL: 'Puissante : chauffe le plus vite.',
+  C8Z_HEATER_DISABLED: "Désactivé : le chauffage d'appoint reste éteint.", C8Z_HEATER_AUTO: "Automatique : le chauffage d'appoint se déclenche selon les besoins.", C8Z_HEATER_CONTINUOUS: "Continu : le chauffage d'appoint reste enclenché.", C8Z_HEATER_M7: "E-Boost (M7) : le chauffage d'appoint suit le réglage E-Boost du spa."
+};
+const Z_CMD = { c8zm: ['mode', 'c8zMode', 'Mode'], c8zs: ['speed', 'c8zSpeed', 'Vitesse'], c8zh: ['heater', 'c8zHeater', "Chauffage d'appoint"] };
+function c8zRows(id, z) {
+  const v = SpaView.c8zView(z); if (!v) return '';
+  const grp = (cmd, title, kind, cur) => `<div class="row blk"><strong>${title}</strong><div class=ctl>${seg(id, 'c8z', cmd, 'Clim8Zone : ' + title.toLowerCase(), Z_OPTS[kind], cur, { cls: Z_OPTS[kind].length > 3 ? 'n4' : 'n3', pend: true })}</div><p class=sub style="margin:8px 0 0">${esc(own(Z_TXT, cur) || 'Réglage inconnu.')}</p></div>`;
+  return row('Clim8Zone', esc(v.statusText)) + (v.auxText ? row("Chauffage d'appoint en cours", esc(v.auxText)) : '') +
+    grp('c8zm', 'Mode de la Clim8Zone', 'mode', v.mode) + grp('c8zs', 'Vitesse de la Clim8Zone', 'speed', v.speed) + grp('c8zh', "Chauffage d'appoint", 'heater', v.heater);
+}
+// Ligne discrète de la carte du tableau de bord (sans contrôle).
+function c8zLine(z) {
+  const v = SpaView.c8zView(z); if (!v) return '';
+  const lo = s => s.toLowerCase();
+  const txt = v.status === 'C8Z_STATUS_COMMLOST' || v.status === 'C8Z_STATUS_ERROR' || !v.modeText ? v.statusText
+    : v.mode === 'C8Z_MODE_DISABLED' ? 'désactivée' : lo(v.modeText) + (v.speedText ? ' · ' + lo(v.speedText) : '');
+  return `<div class=kv><span>Clim8Zone : ${esc(txt)}</span></div>`;
+}
 function filtHtml(id, x) {
   const fc = ui.fc[id] || {}, cyc = SpaView.filterCycles(x);
   return cyc.map((f, i) => {
@@ -511,7 +542,7 @@ function progHtml(id, list) {
 
 // ---- Historique : affichage (courbe SVG sans dépendance, pistes d'activité, tableau, liste des changements) ----
 const HR = [['24h', '24 h', 864e5, '24 heures'], ['7d', '7 jours', 7 * 864e5, '7 jours'], ['30d', '30 jours', 30 * 864e5, '30 jours']];
-const HF = [['all', 'Tout'], ['mode', 'Mode'], ['range', 'Plage'], ['pump', 'Pompes'], ['light', 'Lumière']];
+const HF = [['all', 'Tout'], ['mode', 'Mode'], ['range', 'Plage'], ['pump', 'Pompes'], ['light', 'Lumière'], ['c8z', 'Clim8Zone']];
 const hv = { id: null, filter: 'all', pages: 1, open: false };
 const histRange = () => HR.find(r => r[0] === store('histRange')) || HR[0];
 const fnum = v => v.toFixed(1).replace('.', ',');
@@ -639,7 +670,7 @@ function detail(id, live, info, all, now) {
     ${histHtml(id, comps, now)}
     ${group('Chauffage', `<div class="row blk"><strong id=lm>Mode de chauffe</strong><div class=ctl>${seg(id, 'mode', 'mode', 'Mode de chauffe', MODES, ht.mode)}</div><p class=sub style="margin:8px 0 0">${esc(own(MODE_TXT, ht.mode) || 'Mode inconnu.')}</p></div>` +
       `<div class="row blk"><strong>Plage de température</strong><div class=ctl>${seg(id, 'range', 'range', 'Plage de température', [['HIGH', 'Haute'], ['LOW', 'Basse']], ht.range)}</div></div>` +
-      row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + row('C8Zone', c8zHtml(ht)))}
+      row('Mode éco', ht.eco ? 'Oui' : 'Non') + row('Chauffe', ht.active ? 'En cours' : 'Arrêtée') + c8zRows(id, l.c8z))}
     ${group('Filtration', filtHtml(id, x))}
     ${group('Pompes et lumières', comps.filter(k => k.type !== 'FILTER').map(k => row(esc(k.label) + (k.type === 'CIRCULATION_PUMP' ? '<br><small>Elle fonctionne aussi seule (filtration, chauffage) : le spa peut la rallumer ou la couper lui-même.</small>' : ''), compCtl(id, k) +
       `<button class=btn data-act=rename-comp data-key="${esc(k.key)}" aria-label="Renommer ${esc(k.label)}">Renommer</button>`)).join('') || row('Aucun composant', ''))}
@@ -832,6 +863,18 @@ async function doCmd(d) {
       return run(id, d.cmd, s => {
         const req = d.cmd === 'mode' ? SpaCmd.heaterMode(id, d.key) : SpaCmd.range(id, d.key);
         return { req, desc: d.cmd === 'mode' ? `Mode ${(MODES.find(m => m[0] === d.key) || [, d.key])[1]}` : `Plage ${own(RANGE, d.key) || d.key}`, expect: n => (d.cmd === 'mode' ? n.heaterMode : n.tempRange) === d.key };
+      });
+    }
+    case 'c8zm': case 'c8zs': case 'c8zh': {
+      // Un seul champ par commande ; une commande à la fois par spa (envoi + relecture) ; segment déjà actif : rien.
+      const [f, key] = Z_CMD[d.cmd], k = kk(id, 'c8z'), l = own(store('live'), id);
+      if (!l || ui.busy[k] || ui.pend[k] || (l.c8z && l.c8z[key] === d.key)) return;
+      return run(id, 'c8z', s => {
+        const cur = own(store('live'), id), g = SpaCmd.c8zGuard(cur && cur.c8z);
+        if (!g.ok) throw new Error(`Commande non envoyée : ${g.reason}.`);
+        const req = SpaCmd.c8z(id, { [f]: d.key }), opt = Z_OPTS[f].find(o => o[0] === d.key), desc = `Clim8Zone : ${Z_CMD[d.cmd][2].toLowerCase()} ${(opt ? opt[1] : '').toLowerCase()}`;
+        return { req, desc, judge: () => { const n = own(store('live'), id); return n && n.c8z && n.c8z[key] === d.key ? { msg: `${desc} : confirmé par le spa.`, kind: 'info' } : null; },
+          opt: { delays: Array.from({ length: 15 }, (_, i) => 3 * (i + 1)), wait: "En attente de confirmation. Le spa met jusqu'à une minute à répondre." } };
       });
     }
     case 'panel': return run(id, 'panel', s => { if (!hasPanelLock(s)) throw new Error('Verrouillage du panneau indisponible : le spa ne le signale pas.'); const to = !isLocked(s); return { req: SpaCmd.panel(id, to), desc: to ? 'Verrouillage du panneau' : 'Déverrouillage du panneau', expect: n => isLocked(n) === to,

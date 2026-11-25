@@ -130,6 +130,50 @@ var SpaCmd = (function () {
   function scheduleTrigger(id) { return { method: 'POST', path: '/spa-schedules/' + schedId(id) + '/trigger', body: {} }; }
   function scheduleDelete(id) { return { method: 'DELETE', path: '/spa-schedules/' + schedId(id), body: null }; }
 
+  // ---- Clim8Zone (pompe à chaleur) : route de l'application mobile, SANS /web, via MOBILE. Spécification : docs/API.md. ----
+  var C8Z = { mode: ['DISABLED', 'HEAT', 'COOL', 'BOTH'], speed: ['SMART', 'SILENT', 'POWERFUL'], heater: ['M7', 'DISABLED', 'AUTO', 'CONTINUOUS'] };
+  var C8Z_PREFIX = { mode: 'C8Z_MODE_', speed: 'C8Z_SPEED_', heater: 'C8Z_HEATER_' };
+  var C8Z_WHAT = { mode: 'Mode', speed: 'Vitesse', heater: "Chauffage d'appoint" };
+  var C8Z_FIELD = { mode: 'modeState', speed: 'speedState', heater: 'heaterState' };
+  function c8zValue(kind, v) {
+    var short = typeof v === 'string' && v.indexOf(C8Z_PREFIX[kind]) === 0 ? v.slice(C8Z_PREFIX[kind].length) : v;
+    if (C8Z[kind].indexOf(short) < 0) throw new Error(C8Z_WHAT[kind] + ' de la Clim8Zone invalide : « ' + v + ' » (attendu : ' + C8Z[kind].join(', ') + ').');
+    return C8Z_PREFIX[kind] + short;
+  }
+  // Clés absentes si non fournies (undefined ou null) ; au moins une des trois.
+  function c8z(spaId, o) {
+    if (typeof spaId !== 'string' || !spaId) throw new Error('Identifiant du spa manquant.');
+    o = o && typeof o === 'object' ? o : {};
+    var body = { spaId: spaId, via: 'MOBILE' }, n = 0;
+    ['mode', 'speed', 'heater'].forEach(function (k) { if (o[k] != null) { body[C8Z_FIELD[k]] = c8zValue(k, o[k]); n++; } });
+    if (!n) throw new Error("Clim8Zone : indiquez au moins un réglage (mode, vitesse ou chauffage d'appoint).");
+    return { base: 'root', path: '/spa-commands/c8zone/state', body: body };
+  }
+  // DEFROST est autorisé (information seulement). Tout autre état que CONNECTED/DEFROST est refusé.
+  function c8zGuard(z) {
+    var s = z && typeof z === 'object' ? z.c8zStatus : null;
+    if (s === 'C8Z_STATUS_CONNECTED' || s === 'C8Z_STATUS_DEFROST') return { ok: true, reason: null };
+    if (s === 'C8Z_STATUS_COMMLOST') return { ok: false, reason: 'communication perdue avec la Clim8Zone' };
+    if (s === 'C8Z_STATUS_ERROR') return { ok: false, reason: 'erreur de la Clim8Zone' };
+    if (s == null || s === 'C8Z_STATUS_NOT_PRESENT') return { ok: false, reason: 'pas de module Clim8Zone' };
+    return { ok: false, reason: 'état de la Clim8Zone inconnu' };
+  }
+
+  // Liste blanche des écritures : 'cmd' (/web/spa-commands + chemin), 'sched' (/web + chemin, méthode explicite), 'root' (hôte sans /web, chemin exact) ou null.
+  var CMD_PATHS = ['/component-state', '/panel/state', '/temperature/value', '/temperature/heater-mode', '/temperature/range', '/temperature/scale', '/time', '/filter-cycles/schedule', '/filter-cycles/toggle-filter2-state'];
+  var ROOT_PATHS = ['/spa-commands/c8zone/state'];
+  var SCHED_ROUTES = [['POST', /^\/spa-schedules$/], ['PATCH', /^\/spa-schedules\/[0-9a-f]{24}$/i], ['POST', /^\/spa-schedules\/[0-9a-f]{24}\/trigger$/i], ['DELETE', /^\/spa-schedules\/[0-9a-f]{24}$/i]];
+  function route(r) {
+    if (!r || typeof r !== 'object' || typeof r.path !== 'string') return null;
+    var kind = null;
+    if (r.method) { if (!r.base && SCHED_ROUTES.some(function (s) { return s[0] === r.method && s[1].test(r.path); })) kind = 'sched'; }
+    else if (r.base === 'root') { if (ROOT_PATHS.indexOf(r.path) >= 0) kind = 'root'; }
+    else if (!r.base && CMD_PATHS.indexOf(r.path) >= 0) kind = 'cmd';
+    if (!kind || (r.method !== 'DELETE' && !r.body)) return null;
+    if (kind === 'root' && (typeof r.body !== 'object' || r.body.via !== 'MOBILE' || typeof r.body.spaId !== 'string')) return null;
+    return kind;
+  }
+
   // Éteint seulement les équipements de confort. Jamais CIRCULATION_PUMP (pilotable seule, mais la couper coupe aussi la filtration : choix délibéré),
   // ni OZONE, FILTER, HEATER : systèmes automatiques (filtration, désinfection, chauffe) qu'on ne coupe pas d'un clic.
   // Renvoie {requests, skipped}: un composant allumé qui ne peut pas être éteint (pas de OFF sauf pompe, toujours éteignable, port manquant, même port
@@ -160,6 +204,6 @@ var SpaCmd = (function () {
     return { ok: true, reason: null };
   }
 
-  return { component: component, nextState: nextState, temperature: temperature, temperatureF: temperatureF, heaterMode: heaterMode, range: range, panel: panel, tempLock: tempLock, time: time, scheduleCreate: scheduleCreate, scheduleUpdate: scheduleUpdate, scheduleTrigger: scheduleTrigger, scheduleDelete: scheduleDelete, scale: scale, filter2: filter2, timeFormat: timeFormat, filterCycle: filterCycle, allOff: allOff, guard: guard };
+  return { component: component, nextState: nextState, temperature: temperature, temperatureF: temperatureF, heaterMode: heaterMode, range: range, panel: panel, tempLock: tempLock, time: time, scheduleCreate: scheduleCreate, scheduleUpdate: scheduleUpdate, scheduleTrigger: scheduleTrigger, scheduleDelete: scheduleDelete, scale: scale, filter2: filter2, timeFormat: timeFormat, filterCycle: filterCycle, c8z: c8z, c8zGuard: c8zGuard, route: route, allOff: allOff, guard: guard };
 })();
 if (typeof module !== 'undefined') module.exports = SpaCmd;

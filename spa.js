@@ -147,6 +147,22 @@ var SpaView = (function () {
   }
   var C8Z = { C8Z_STATUS_CONNECTED: 'connecté', C8Z_STATUS_NOT_PRESENT: 'non présent' };
   function c8zText(status) { return status == null ? null : Object.hasOwn(C8Z, status) ? C8Z[status] : String(status); }
+  // Clim8Zone : null si absente (pas d'état, ou NOT_PRESENT) ; sinon textes français (jamais de valeur brute) et valeurs courtes pour les segments.
+  var Z_STATUS = { C8Z_STATUS_CONNECTED: 'connectée', C8Z_STATUS_DEFROST: 'en dégivrage', C8Z_STATUS_COMMLOST: 'communication perdue', C8Z_STATUS_ERROR: 'erreur' };
+  var Z_MODE = { C8Z_MODE_DISABLED: 'Désactivée', C8Z_MODE_HEAT: 'Chauffage', C8Z_MODE_COOL: 'Froid', C8Z_MODE_BOTH: 'Chauffage et froid' };
+  var Z_SPEED = { C8Z_SPEED_SMART: 'Intelligente', C8Z_SPEED_SILENT: 'Silencieuse', C8Z_SPEED_POWERFUL: 'Puissante' };
+  var Z_HEAT = { C8Z_HEATER_DISABLED: 'Désactivé', C8Z_HEATER_AUTO: 'Automatique', C8Z_HEATER_CONTINUOUS: 'Continu', C8Z_HEATER_M7: 'E-Boost (M7)' };
+  function c8zView(z) {
+    if (!z || typeof z !== 'object' || z.c8zStatus == null || z.c8zStatus === 'C8Z_STATUS_NOT_PRESENT') return null;
+    var t = function (map, v) { return typeof v === 'string' && Object.hasOwn(map, v) ? map[v] : null; };
+    var hs = z.c8zHeaterState;
+    return {
+      status: z.c8zStatus, statusText: t(Z_STATUS, z.c8zStatus) || 'état inconnu',
+      auxText: hs == null ? null : hs === 'OFF' ? 'arrêté' : 'en marche',
+      mode: z.c8zMode || null, speed: z.c8zSpeed || null, heater: z.c8zHeater || null,
+      modeText: t(Z_MODE, z.c8zMode), speedText: t(Z_SPEED, z.c8zSpeed), heaterText: t(Z_HEAT, z.c8zHeater)
+    };
+  }
 
   // Verrouillage de la consigne : null si la clé est absente, sinon booléen.
   function tempLock(state) {
@@ -193,6 +209,6 @@ var SpaView = (function () {
     return 'code erreur ' + a + ' -> ' + b;
   }
 
-  return { errorChange: errorChange, toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, filterCycles: filterCycles, durationText: durationText, c8zText: c8zText, tempLock: tempLock, autoTimeDecision: autoTimeDecision, tech: tech, schedules: schedules, alerts: alerts };
+  return { errorChange: errorChange, toC: toC, toF: toF, driftText: driftText, components: components, control: control, outcome: outcome, temps: temps, ping: ping, clock: clock, heating: heating, filterCycles: filterCycles, durationText: durationText, c8zText: c8zText, c8zView: c8zView,tempLock: tempLock, autoTimeDecision: autoTimeDecision, tech: tech, schedules: schedules, alerts: alerts };
 })();
 if (typeof module !== 'undefined') module.exports = SpaView;

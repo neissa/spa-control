@@ -10,8 +10,8 @@ test('snapshot: clés type:port (ou index), types suivis, éléments invalides i
     P('GATEWAY', null, 'ON'), P('CONTROLLER', null, 'ON'), P('HEATER', null, 'ON'), null, 'x', P('OZONE', null, null), P('FILTER', null, 'OFF'), P('FILTER', null, 'DISABLED'), P('MICROSILK', 1, 'ON')]));
   assert.equal(s.mode, 'REST'); assert.equal(s.range, 'LOW');
   assert.deepEqual(s.comps, { 'PUMP:1': 'OFF', 'PUMP:2': 'HIGH', 'LIGHT:0': 'ON', 'LIGHT:3': 'OFF', 'FILTER:0': 'OFF', 'FILTER:1': 'DISABLED' });
-  assert.deepEqual(H.snapshot(null), { mode: null, range: null, comps: {} });
-  assert.deepEqual(H.snapshot({ components: 'x', heaterMode: 5 }), { mode: null, range: null, comps: {} });
+  assert.deepEqual(H.snapshot(null), { mode: null, range: null, comps: {}, c8z: {} });
+  assert.deepEqual(H.snapshot({ components: 'x', heaterMode: 5 }), { mode: null, range: null, comps: {}, c8z: {} });
 });
 
 test('snapshot: clé en double ignorée, entrée non modifiée', () => {
@@ -32,7 +32,7 @@ test('diff: premier relevé sans changement, puis mode, plage, pompe, lumière',
 
 test('diff: composant ou valeur absents ignorés (réponse partielle)', () => {
   const a = H.snapshot(st([P('PUMP', 1, 'OFF'), P('PUMP', 2, 'ON')]));
-  const part = { mode: null, range: null, comps: { 'PUMP:1': 'OFF' } };
+  const part = { mode: null, range: null, comps: { 'PUMP:1': 'OFF' }, c8z: {} };
   assert.deepEqual(H.diff(a, part, 1, 's'), []);
   assert.deepEqual(H.diff(part, { mode: 'REST', range: 'LOW', comps: { 'PUMP:1': 'OFF', 'PUMP:9': 'ON' } }, 1, 's'), []);
   // merge garde la dernière valeur connue : un composant qui revient changé est un vrai changement
@@ -112,4 +112,25 @@ test('describe et kind', () => {
   assert.equal(d({ k: 'comp:PUMP:2', f: 'OFF', t: 'LOW' }, k => k === 'PUMP:2' ? 'Jets du dos' : null), 'Jets du dos : Éteint → Doux');
   assert.equal(d({ k: 'comp:FOO:1', f: 'A', t: 'B' }), 'FOO:1 : A → B');
   assert.deepEqual(['mode', 'range', 'comp:PUMP:1', 'comp:CIRCULATION_PUMP:0', 'comp:LIGHT:1', 'comp:OZONE:0', 'zzz'].map(k => H.kind({ k })), ['mode', 'range', 'pump', 'pump', 'light', 'other', 'other']);
+});
+
+test('Clim8Zone: snapshot, merge, diff, kind et describe', () => {
+  const z = (m, s, h) => ({ c8zMode: m, c8zSpeed: s, c8zHeater: h });
+  const a = H.snapshot(st([]), z('C8Z_MODE_DISABLED', 'C8Z_SPEED_SMART', 'C8Z_HEATER_M7'));
+  assert.deepEqual(a.c8z, { mode: 'C8Z_MODE_DISABLED', speed: 'C8Z_SPEED_SMART', heater: 'C8Z_HEATER_M7' });
+  assert.deepEqual(H.snapshot(st([])).c8z, {}); assert.deepEqual(H.snapshot(st([]), null).c8z, {});
+  assert.deepEqual(H.snapshot(st([]), { c8zMode: 5, c8zSpeed: '' }).c8z, {});
+  const b = H.snapshot(st([]), z('C8Z_MODE_HEAT', 'C8Z_SPEED_SMART', 'C8Z_HEATER_AUTO'));
+  assert.deepEqual(H.diff(a, b, 3, 's'), [{ ts: 3, spa: 's', k: 'c8z:mode', f: 'C8Z_MODE_DISABLED', t: 'C8Z_MODE_HEAT' }, { ts: 3, spa: 's', k: 'c8z:heater', f: 'C8Z_HEATER_M7', t: 'C8Z_HEATER_AUTO' }]);
+  // c8z indisponible (lecture échouée) ou ancien relevé sans c8z : aucun faux changement ; merge garde la dernière valeur
+  const none = H.snapshot(st([]));
+  assert.deepEqual(H.diff(a, none, 3, 's'), []); assert.deepEqual(H.diff({ mode: 'REST', comps: {} }, b, 3, 's').filter(c => c.k.startsWith('c8z')), []);
+  assert.deepEqual(H.merge(a, none).c8z, a.c8z);
+  assert.equal(H.merge({ mode: 'REST', comps: {} }, b).c8z.mode, 'C8Z_MODE_HEAT');
+  assert.equal(H.kind({ k: 'c8z:speed' }), 'c8z'); assert.equal(H.kind({ k: 'comp:PUMP:1' }), 'pump');
+  const d = (k, f, t) => H.describe({ k, f, t });
+  assert.equal(d('c8z:mode', 'C8Z_MODE_DISABLED', 'C8Z_MODE_HEAT'), 'Clim8Zone — mode : Désactivée → Chauffage');
+  assert.equal(d('c8z:speed', 'C8Z_SPEED_SMART', 'C8Z_SPEED_SILENT'), 'Clim8Zone — vitesse : Intelligente → Silencieuse');
+  assert.equal(d('c8z:heater', 'C8Z_HEATER_M7', 'C8Z_HEATER_CONTINUOUS'), "Clim8Zone — chauffage d'appoint : E-Boost (M7) → Continu");
+  assert.equal(d('c8z:mode', 'C8Z_MODE_X', 'C8Z_MODE_BOTH'), 'Clim8Zone — mode : valeur inconnue → Chauffage et froid');
 });

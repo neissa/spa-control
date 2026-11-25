@@ -194,3 +194,61 @@ test('guard: hors ligne, absent, panelLock non bloquant', () => {
   assert.equal(C.guard(null).ok, false);
   assert.equal(C.guard(st({ panelLock: true })).ok, true);
 });
+
+test('c8z: URL racine sans /web, via MOBILE, une seule clé selon le champ, valeurs courtes ou complètes', () => {
+  assert.deepEqual(C.c8z(ID, { mode: 'C8Z_MODE_HEAT' }), { base: 'root', path: '/spa-commands/c8zone/state', body: { spaId: ID, via: 'MOBILE', modeState: 'C8Z_MODE_HEAT' } });
+  assert.deepEqual(C.c8z(ID, { mode: 'HEAT' }).body, { spaId: ID, via: 'MOBILE', modeState: 'C8Z_MODE_HEAT' });
+  assert.deepEqual(C.c8z(ID, { speed: 'SILENT' }).body, { spaId: ID, via: 'MOBILE', speedState: 'C8Z_SPEED_SILENT' });
+  assert.deepEqual(C.c8z(ID, { heater: 'C8Z_HEATER_M7' }).body, { spaId: ID, via: 'MOBILE', heaterState: 'C8Z_HEATER_M7' });
+  assert.deepEqual(C.c8z(ID, { mode: 'COOL', speed: 'POWERFUL', heater: 'AUTO' }).body, { spaId: ID, via: 'MOBILE', modeState: 'C8Z_MODE_COOL', speedState: 'C8Z_SPEED_POWERFUL', heaterState: 'C8Z_HEATER_AUTO' });
+  for (const m of ['DISABLED', 'HEAT', 'COOL', 'BOTH']) assert.equal(C.c8z(ID, { mode: m }).body.modeState, 'C8Z_MODE_' + m);
+  for (const m of ['M7', 'DISABLED', 'AUTO', 'CONTINUOUS']) assert.equal(C.c8z(ID, { heater: m }).body.heaterState, 'C8Z_HEATER_' + m);
+  assert.ok(!('speedState' in C.c8z(ID, { mode: 'HEAT', speed: null }).body));
+});
+
+test('c8z: erreurs françaises (aucun champ, valeur hors liste, mauvais préfixe, spa)', () => {
+  assert.throws(() => C.c8z(ID, {}), /au moins un réglage/);
+  assert.throws(() => C.c8z(ID), /au moins un réglage/);
+  assert.throws(() => C.c8z(ID, { mode: 'HOT' }), /Mode de la Clim8Zone invalide/);
+  assert.throws(() => C.c8z(ID, { speed: 'C8Z_MODE_HEAT' }), /Vitesse de la Clim8Zone invalide/);
+  assert.throws(() => C.c8z(ID, { heater: 'C8Z_SPEED_SMART' }), /appoint de la Clim8Zone invalide/);
+  assert.throws(() => C.c8z(ID, { mode: '' }), /invalide/);
+  assert.throws(() => C.c8z(ID, { mode: 'HEAT', heater: 'x' }), /invalide/);
+  assert.throws(() => C.c8z('', { mode: 'HEAT' }), /Identifiant/);
+});
+
+test('c8zGuard: refuse absent, NOT_PRESENT, COMMLOST, ERROR ; accepte CONNECTED et DEFROST', () => {
+  const g = s => C.c8zGuard({ c8zStatus: s });
+  assert.deepEqual(g('C8Z_STATUS_CONNECTED'), { ok: true, reason: null });
+  assert.equal(g('C8Z_STATUS_DEFROST').ok, true);
+  assert.deepEqual(C.c8zGuard(null), { ok: false, reason: 'pas de module Clim8Zone' });
+  assert.deepEqual(C.c8zGuard({}), { ok: false, reason: 'pas de module Clim8Zone' });
+  assert.equal(g('C8Z_STATUS_NOT_PRESENT').reason, 'pas de module Clim8Zone');
+  assert.equal(g('C8Z_STATUS_COMMLOST').reason, 'communication perdue avec la Clim8Zone');
+  assert.equal(g('C8Z_STATUS_ERROR').reason, 'erreur de la Clim8Zone');
+  assert.equal(g('AUTRE').ok, false);
+});
+
+test('route: liste blanche des écritures (le seul chemin racine est c8zone/state en POST via MOBILE)', () => {
+  const b = { spaId: ID, via: 'MOBILE' }, SID = 'a'.repeat(24);
+  assert.equal(C.route(C.c8z(ID, { mode: 'HEAT' })), 'root');
+  assert.equal(C.route(C.component(ID, pump, 'LOW')), 'cmd');
+  assert.equal(C.route(C.scheduleTrigger(SID)), 'sched');
+  assert.equal(C.route(C.scheduleDelete(SID)), 'sched');
+  for (const path of ['/spa-commands/c8zone/state/', '/web/spa-commands/c8zone/state', '/spa-commands/c8zone', '/spa-commands/component-state', '/component-state', '/auth/login', '/spas/owned', '/spa-commands/reboot', '/spa-commands/panel/state', '/spa-schedules', '/spa-commands/chromozone/state', '/spa-commands/c8zone/state?x=1', '/spa-commands/c8zone/statex'])
+    assert.equal(C.route({ base: 'root', path, body: b }), null, path);
+  assert.equal(C.route({ base: 'root', path: '/spa-commands/c8zone/state', body: b, method: 'DELETE' }), null);
+  assert.equal(C.route({ base: 'root', path: '/spa-commands/c8zone/state', body: b, method: 'POST' }), null);
+  assert.equal(C.route({ base: 'root', path: '/spa-commands/c8zone/state' }), null);
+  assert.equal(C.route({ base: 'root', path: '/spa-commands/c8zone/state', body: { spaId: ID, via: 'WEB' } }), null);
+  assert.equal(C.route({ base: 'root', path: '/spa-commands/c8zone/state', body: { via: 'MOBILE' } }), null);
+  assert.equal(C.route({ base: 'autre', path: '/spa-commands/c8zone/state', body: b }), null);
+  assert.equal(C.route({ path: '/spa-commands/c8zone/state', body: b }), null);
+  assert.equal(C.route({ path: '/c8zone/state', body: b }), null);
+  assert.equal(C.route({ base: 'root', path: '/component-state', body: b }), null);
+  assert.equal(C.route({ base: 'root', path: '/spa-schedules', method: 'POST', body: {} }), null);
+  assert.equal(C.route({ path: '/spa-schedules', method: 'PUT', body: {} }), null);
+  assert.equal(C.route({ path: '/spa-schedules/zz', method: 'DELETE' }), null);
+  assert.equal(C.route({ path: '/component-state' }), null);
+  assert.equal(C.route(null), null); assert.equal(C.route({}), null); assert.equal(C.route('x'), null);
+});
